@@ -1,36 +1,123 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# J-Digital AI Lead Assistant (JALA)
 
-## Getting Started
+Production-ready internal app for J-Digital Solutions to discover, score, and convert leads with strict human-in-the-loop outreach.
 
-First, run the development server:
+## Compliance Boundaries
+
+- No automated Facebook login
+- No automated DM sending
+- No private-data scraping
+- No simulated human behavior
+- Manual flow only: open Page URL, copy draft, send manually in Meta tools
+
+## Stack (Cost-Optimized)
+
+- Next.js 16 (App Router) + TypeScript strict
+- TailwindCSS + shadcn-style components
+- Postgres (Neon recommended) + Drizzle ORM
+- OpenAI Responses API
+- Zod validation
+- Vercel-ready + Dockerfile
+
+## Core Modules
+
+- Prospecting pack (categories, keywords, locations, saved configs, niche recommendations)
+- Lead ingestion (Google Places, CSV mapping/import, manual add)
+- Scoring (heuristics + AI + weighted total)
+- Outreach message generation (A/B/C variants)
+- Manual outreach queue with status pipeline and event logs
+- Analytics (KPIs, breakdowns, A/B variant recommendation)
+- Settings/templates (categories, locations, keywords, weights, templates)
+
+## Routes
+
+- `/login`
+- `/dashboard`
+- `/dashboard/prospecting`
+- `/dashboard/leads`
+- `/dashboard/leads/[id]`
+- `/dashboard/templates`
+- `/dashboard/analytics`
+- `/dashboard/settings`
+
+## Environment Variables
+
+Copy:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Required:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `DATABASE_URL`
+- `ADMIN_PASSWORD`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Recommended:
 
-## Learn More
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (default: `gpt-4.1-mini`)
+- `GOOGLE_PLACES_API_KEY` (for Google Places ingestion)
 
-To learn more about Next.js, take a look at the following resources:
+## Database Setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run migration + seed:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run db:setup
+```
 
-## Deploy on Vercel
+Or separately:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run db:migrate
+npm run db:seed
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Local Run
+
+```bash
+npm install
+npm run dev
+```
+
+## Quality Checks
+
+```bash
+npm run lint
+npm run build
+```
+
+## Smooth Live Deployment (Recommended)
+
+1. Create a Neon Postgres database (free tier works).
+2. Copy Neon connection string into `DATABASE_URL`.
+3. Deploy this repo to Vercel.
+4. Add env vars in Vercel:
+   - `DATABASE_URL`
+   - `ADMIN_PASSWORD`
+   - `OPENAI_API_KEY` (optional but recommended)
+   - `OPENAI_MODEL` (optional)
+   - `GOOGLE_PLACES_API_KEY` (optional)
+5. After first deploy, run:
+   - `npm run db:setup`
+6. Verify:
+   - Login works
+   - Dashboard loads
+   - Manual add + CSV import
+   - Lead scoring
+   - Message generation
+   - Manual queue events/status updates
+
+## Docker (Optional)
+
+```bash
+docker build -t jala .
+docker run -p 3000:3000 --env-file .env.local jala
+```
+
+## Notes
+
+- API routes are explicitly `nodejs` runtime for Postgres compatibility.
+- Connection settings are tuned for serverless stability (`prepare: false`, low max connections).
+- Keep credentials out of logs and commits.
