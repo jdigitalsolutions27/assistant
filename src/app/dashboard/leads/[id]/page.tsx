@@ -5,16 +5,22 @@ import { LeadDetailActions } from "@/components/dashboard/lead-detail-actions";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getCategories, getLeadById, getLocations } from "@/lib/services/data-service";
+import { getCampaigns, getCategories, getLeadById, getLocations } from "@/lib/services/data-service";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [bundle, categories, locations] = await Promise.all([getLeadById(id), getCategories(), getLocations()]);
+  const [bundle, categories, locations, campaigns] = await Promise.all([
+    getLeadById(id),
+    getCategories(),
+    getLocations(),
+    getCampaigns({ status: "ALL" }),
+  ]);
   if (!bundle.lead) notFound();
   const lead = bundle.lead;
 
   const categoryName = categories.find((item) => item.id === lead.category_id)?.name ?? "Unassigned";
   const locationName = locations.find((item) => item.id === lead.location_id)?.name ?? "Unassigned";
+  const campaignName = campaigns.find((item) => item.id === lead.campaign_id)?.name ?? "Unassigned";
 
   return (
     <div className="space-y-6">
@@ -46,6 +52,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 <span className="font-medium text-slate-900">Location:</span> {locationName}
               </p>
               <p>
+                <span className="font-medium text-slate-900">Campaign:</span> {campaignName}
+              </p>
+              <p>
                 <span className="font-medium text-slate-900">Address:</span> {lead.address ?? "-"}
               </p>
               <p>
@@ -60,6 +69,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <p>
                 <span className="font-medium text-slate-900">Score:</span> {lead.score_total ?? "-"} (H:{lead.score_heuristic ?? "-"} / AI:
                 {lead.score_ai ?? "-"})
+              </p>
+              <p>
+                <span className="font-medium text-slate-900">Lead Quality:</span> {lead.quality_tier} ({lead.quality_score}/100)
               </p>
             </CardContent>
           </Card>

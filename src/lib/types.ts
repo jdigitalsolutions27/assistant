@@ -22,7 +22,7 @@ export const EVENT_TYPES = [
 
 export type OutreachEventType = (typeof EVENT_TYPES)[number];
 
-export const MESSAGE_LANGUAGES = ["Taglish", "English", "Waray"] as const;
+export const MESSAGE_LANGUAGES = ["Taglish", "English", "Tagalog", "Waray"] as const;
 export type MessageLanguage = (typeof MESSAGE_LANGUAGES)[number];
 
 export const MESSAGE_TONES = ["Soft", "Direct", "Value-Focused"] as const;
@@ -30,6 +30,8 @@ export type MessageTone = (typeof MESSAGE_TONES)[number];
 
 export const MESSAGE_ANGLES = ["booking", "low_volume", "organization"] as const;
 export type MessageAngle = (typeof MESSAGE_ANGLES)[number];
+export const CAMPAIGN_STATUSES = ["ACTIVE", "PAUSED", "ARCHIVED"] as const;
+export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 
 export interface Category {
   id: string;
@@ -57,11 +59,14 @@ export interface Lead {
   phone: string | null;
   email: string | null;
   address: string | null;
+  campaign_id: string | null;
   source: string;
   status: LeadStatus;
   score_heuristic: number | null;
   score_ai: number | null;
   score_total: number | null;
+  quality_score: number;
+  quality_tier: "High" | "Medium" | "Low";
   last_contacted_at: string | null;
   created_at: string;
 }
@@ -78,7 +83,39 @@ export interface OutreachMessage {
   language: MessageLanguage;
   angle: MessageAngle;
   variant_label: "A" | "B" | "C";
+  message_kind: "initial" | "follow_up";
   message_text: string;
+  created_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  category_id: string | null;
+  location_id: string | null;
+  language: MessageLanguage;
+  tone: MessageTone;
+  angle: MessageAngle;
+  min_quality_score: number;
+  daily_send_target: number;
+  follow_up_days: number;
+  status: CampaignStatus;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface CampaignPlaybook {
+  id: string;
+  name: string;
+  category_id: string | null;
+  location_id: string | null;
+  language: MessageLanguage;
+  tone: MessageTone;
+  angle: MessageAngle;
+  min_quality_score: number;
+  daily_send_target: number;
+  follow_up_days: number;
+  notes: string | null;
   created_at: string;
 }
 

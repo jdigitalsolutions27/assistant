@@ -11,6 +11,8 @@ const envSchema = z.object({
   GOOGLE_PLACES_API_KEY: emptyToUndefined,
   ADMIN_PASSWORD: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(6).optional()),
   DATABASE_URL: emptyToUndefined,
+  MAINTENANCE_API_KEY: emptyToUndefined,
+  CRON_SECRET: emptyToUndefined,
 });
 
 const parsed = envSchema.safeParse({
@@ -19,6 +21,8 @@ const parsed = envSchema.safeParse({
   GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
   DATABASE_URL: process.env.DATABASE_URL,
+  MAINTENANCE_API_KEY: process.env.MAINTENANCE_API_KEY,
+  CRON_SECRET: process.env.CRON_SECRET,
 });
 
 if (!parsed.success) {

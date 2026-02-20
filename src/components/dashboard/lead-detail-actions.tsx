@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { requestJson } from "@/lib/client-http";
 import type { Lead, MessageAngle, OutreachMessage } from "@/lib/types";
 
 type ScoreResponse = {
@@ -31,18 +32,24 @@ export function LeadDetailActions({
   const [angle, setAngle] = useState<MessageAngle>("booking");
   const [messages, setMessages] = useState(initialMessages);
   const [scoreData, setScoreData] = useState<ScoreResponse | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
 
   const groupedMessages = useMemo(() => {
     const map = new Map<string, OutreachMessage>();
     for (const message of messages) {
-      map.set(message.variant_label, message);
+      const key = `${message.message_kind}:${message.variant_label}`;
+      if (!map.has(key)) {
+        map.set(key, message);
+      }
     }
-    return ["A", "B", "C"].map((label) => map.get(label) ?? null);
+    const initial = ["A", "B", "C"].map((label) => map.get(`initial:${label}`) ?? null);
+    const followUp = ["A", "B", "C"].map((label) => map.get(`follow_up:${label}`) ?? null);
+    return { initial, followUp };
   }, [messages]);
 
   async function emitEvent(eventType: string, statusValue?: string, metadata: Record<string, unknown> = {}) {
-    await fetch("/api/outreach/events", {
+    await requestJson<{ ok?: boolean; error?: string }>("/api/outreach/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -51,6 +58,7 @@ export function LeadDetailActions({
         status: statusValue,
         metadata_json: metadata,
       }),
+      timeoutMs: 12_000,
     });
   }
 
@@ -58,9 +66,10 @@ export function LeadDetailActions({
     setLoadingScore(true);
     setInfo(null);
     try {
-      const response = await fetch(`/api/leads/${lead.id}/score`, { method: "POST" });
-      const payload = (await response.json()) as ScoreResponse & { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Scoring failed.");
+      const payload = await requestJson<ScoreResponse & { error?: string }>(`/api/leads/${lead.id}/score`, {
+        method: "POST",
+        timeoutMs: 30_000,
+      });
       setScoreData(payload);
       setAngle(payload.suggested_angle);
       setInfo("Lead scoring completed.");
@@ -75,19 +84,22 @@ export function LeadDetailActions({
     setLoadingMessages(true);
     setInfo(null);
     try {
-      const response = await fetch(`/api/leads/${lead.id}/messages`, {
+      const payload = await requestJson<{ variants?: Array<{ variant_label: "A" | "B" | "C"; message_text: string }>; error?: string }>(
+        `/api/leads/${lead.id}/messages`,
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, tone, angle }),
-      });
-      const payload = (await response.json()) as { variants?: Array<{ variant_label: "A" | "B" | "C"; message_text: string }>; error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Message generation failed.");
+          timeoutMs: 45_000,
+        },
+      );
       const refreshed = (payload.variants ?? []).map((variant) => ({
         id: `${lead.id}-${variant.variant_label}`,
         lead_id: lead.id,
-        language: language as "Taglish" | "English" | "Waray",
+        language: language as "Taglish" | "English" | "Tagalog" | "Waray",
         angle,
         variant_label: variant.variant_label,
+        message_kind: "initial" as const,
         message_text: variant.message_text,
         created_at: new Date().toISOString(),
       }));
@@ -102,26 +114,38 @@ export function LeadDetailActions({
   }
 
   async function copyMessage(text: string) {
-    await navigator.clipboard.writeText(text);
-    await emitEvent("COPIED", undefined, { copiedAt: new Date().toISOString() });
-    setInfo("Message copied to clipboard.");
+    try {
+      await navigator.clipboard.writeText(text);
+      await emitEvent("COPIED", undefined, { copiedAt: new Date().toISOString() });
+      setInfo("Message copied to clipboard.");
+    } catch (error) {
+      setInfo(error instanceof Error ? error.message : "Failed to copy message.");
+    }
   }
 
   async function updatePipeline() {
-    const eventType =
-      status === "SENT"
-        ? "MARKED_SENT"
-        : status === "REPLIED"
-          ? "REPLIED"
-          : status === "QUALIFIED"
-            ? "QUALIFIED"
-            : status === "WON"
-              ? "WON"
-              : status === "LOST"
-                ? "LOST"
-                : "COPIED";
-    await emitEvent(eventType, status, { updatedAt: new Date().toISOString() });
-    setInfo(`Status updated to ${status}.`);
+    setUpdatingStatus(true);
+    setInfo(null);
+    try {
+      const eventType =
+        status === "SENT"
+          ? "MARKED_SENT"
+          : status === "REPLIED"
+            ? "REPLIED"
+            : status === "QUALIFIED"
+              ? "QUALIFIED"
+              : status === "WON"
+                ? "WON"
+                : status === "LOST"
+                  ? "LOST"
+                  : "COPIED";
+      await emitEvent(eventType, status, { updatedAt: new Date().toISOString() });
+      setInfo(`Status updated to ${status}.`);
+    } catch (error) {
+      setInfo(error instanceof Error ? error.message : "Failed to update status.");
+    } finally {
+      setUpdatingStatus(false);
+    }
   }
 
   return (
@@ -136,11 +160,11 @@ export function LeadDetailActions({
             {loadingScore ? "Scoring..." : "Run Score"}
           </Button>
           {scoreData ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
               <p>Heuristic: {scoreData.score_heuristic}</p>
               <p>AI: {scoreData.score_ai}</p>
               <p>Total: {scoreData.score_total}</p>
-              <p className="mt-2 text-slate-700">{scoreData.opportunity_summary}</p>
+              <p className="mt-2 text-slate-700 dark:text-slate-200">{scoreData.opportunity_summary}</p>
             </div>
           ) : null}
         </CardContent>
@@ -158,6 +182,7 @@ export function LeadDetailActions({
               <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
                 <option value="Taglish">Taglish</option>
                 <option value="English">English</option>
+                <option value="Tagalog">Tagalog</option>
                 <option value="Waray">Waray</option>
               </Select>
             </div>
@@ -195,8 +220,12 @@ export function LeadDetailActions({
               href={lead.facebook_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              onClick={() => emitEvent("OPENED_LINK", undefined, { url: lead.facebook_url })}
+              className="inline-flex rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              onClick={() => {
+                void emitEvent("OPENED_LINK", undefined, { url: lead.facebook_url }).catch((error: unknown) => {
+                  setInfo(error instanceof Error ? error.message : "Failed to log link event.");
+                });
+              }}
             >
               Open Facebook Page
             </a>
@@ -205,11 +234,12 @@ export function LeadDetailActions({
           )}
 
           <div className="space-y-2">
-            {groupedMessages.map((message, idx) =>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Initial Drafts</p>
+            {groupedMessages.initial.map((message, idx) =>
               message ? (
                 <div key={message.variant_label} className="rounded-md border border-slate-200 p-3">
-                  <p className="mb-2 text-xs font-semibold text-slate-600">Variant {message.variant_label}</p>
-                  <p className="text-sm text-slate-800">{message.message_text}</p>
+                  <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Variant {message.variant_label}</p>
+                  <p className="text-sm text-slate-800 dark:text-slate-100">{message.message_text}</p>
                   <div className="mt-3">
                     <Button size="sm" variant="secondary" onClick={() => copyMessage(message.message_text)}>
                       Copy Variant {message.variant_label}
@@ -219,6 +249,25 @@ export function LeadDetailActions({
               ) : (
                 <p key={idx} className="text-sm text-slate-500">
                   Variant {String.fromCharCode(65 + idx)} not generated yet.
+                </p>
+              ),
+            )}
+
+            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Follow-up Drafts</p>
+            {groupedMessages.followUp.map((message, idx) =>
+              message ? (
+                <div key={`follow-${message.variant_label}`} className="rounded-md border border-slate-200 p-3">
+                  <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Follow-up Variant {message.variant_label}</p>
+                  <p className="text-sm text-slate-800 dark:text-slate-100">{message.message_text}</p>
+                  <div className="mt-3">
+                    <Button size="sm" variant="secondary" onClick={() => copyMessage(message.message_text)}>
+                      Copy Follow-up {message.variant_label}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p key={`follow-empty-${idx}`} className="text-sm text-slate-500">
+                  Follow-up variant {String.fromCharCode(65 + idx)} not generated yet.
                 </p>
               ),
             )}
@@ -234,12 +283,14 @@ export function LeadDetailActions({
               <option value="WON">WON</option>
               <option value="LOST">LOST</option>
             </Select>
-            <Button onClick={updatePipeline}>Update Status</Button>
+            <Button onClick={updatePipeline} disabled={updatingStatus}>
+              {updatingStatus ? "Updating..." : "Update Status"}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {info ? <p className="text-sm text-slate-700">{info}</p> : null}
+      {info ? <p className="text-sm text-slate-700 dark:text-slate-200">{info}</p> : null}
     </div>
   );
 }

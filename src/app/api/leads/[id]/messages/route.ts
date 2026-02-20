@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceApiGuards, jsonError } from "@/lib/api-helpers";
 import { generateOutreachVariants } from "@/lib/ai";
+import { lintOutreachText, sanitizeMessageVariants } from "@/lib/compliance";
 import { generateMessageSchema } from "@/lib/validations";
 import {
   createOutreachMessages,
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const angle = payload.angle ?? category?.default_angle ?? "organization";
     const template = lead.category_id ? await getTemplateFor(lead.category_id, payload.language, payload.tone) : null;
 
-    const variants = await generateOutreachVariants({
+    const rawVariants = await generateOutreachVariants({
       lead,
       categoryName: category?.name ?? "Business",
       locationName: location?.name ?? "your area",
@@ -41,6 +42,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       angle,
       templateHint: template?.template_text ?? null,
     });
+    const variants = sanitizeMessageVariants(rawVariants);
+    const complianceIssues = variants.flatMap((variant) =>
+      lintOutreachText(variant.message_text).map((issue) => ({ ...issue, variant_label: variant.variant_label })),
+    );
 
     await createOutreachMessages(
       lead.id,
@@ -48,12 +53,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         ...variant,
         language: payload.language,
         angle,
+        message_kind: "initial" as const,
       })),
+      { replaceExisting: true, messageKind: "initial" },
     );
 
     await updateLeadStatus(lead.id, "DRAFTED");
 
-    return NextResponse.json({ variants, angle, language: payload.language, tone: payload.tone });
+    return NextResponse.json({ variants, angle, language: payload.language, tone: payload.tone, compliance_issues: complianceIssues });
   } catch (error) {
     return jsonError(error, 400);
   }

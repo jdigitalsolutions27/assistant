@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/maintenance/nightly",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/maintenance/follow-ups",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}

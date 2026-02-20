@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceApiGuards, jsonError } from "@/lib/api-helpers";
-import { bulkCreateLeads } from "@/lib/services/data-service";
+import { bulkCreateLeadsWithStats } from "@/lib/services/data-service";
 import { csvImportSchema, leadUpsertSchema } from "@/lib/validations";
 import { normalizeUrl } from "@/lib/utils";
 
@@ -45,10 +45,11 @@ export async function POST(request: NextRequest) {
       ];
     });
 
-    const inserted = await bulkCreateLeads(insertRows);
+    const result = await bulkCreateLeadsWithStats(insertRows);
 
     return NextResponse.json({
-      imported: inserted.length,
+      imported: result.inserted.length,
+      skipped_duplicates: result.skippedDuplicates,
       rejected: errors.length,
       errors,
     });

@@ -105,6 +105,74 @@ async function upsertSettings(): Promise<void> {
   }
 }
 
+async function upsertPlaybooks(categoryMap: Map<string, string>): Promise<void> {
+  const playbooks = [
+    {
+      name: "Spa Booking Booster",
+      category: "Spa",
+      language: "Taglish",
+      tone: "Soft",
+      angle: "booking",
+      min_quality_score: 50,
+      daily_send_target: 20,
+      follow_up_days: 3,
+      notes: "Ideal for local spa pages with low inquiry conversion.",
+    },
+    {
+      name: "Hotel Lead Recovery",
+      category: "Hotel",
+      language: "English",
+      tone: "Value-Focused",
+      angle: "booking",
+      min_quality_score: 55,
+      daily_send_target: 15,
+      follow_up_days: 4,
+      notes: "For hotels with website traffic but missed follow-ups.",
+    },
+    {
+      name: "Restaurant Low-Volume Revival",
+      category: "Restaurant",
+      language: "Taglish",
+      tone: "Direct",
+      angle: "low_volume",
+      min_quality_score: 45,
+      daily_send_target: 25,
+      follow_up_days: 3,
+      notes: "For restaurants with inconsistent order volume.",
+    },
+  ] as const;
+
+  for (const item of playbooks) {
+    const categoryId = categoryMap.get(item.category) ?? null;
+    await sql`
+      insert into campaign_playbooks (
+        name, category_id, language, tone, angle,
+        min_quality_score, daily_send_target, follow_up_days, notes
+      )
+      values (
+        ${item.name},
+        ${categoryId}::uuid,
+        ${item.language}::message_language,
+        ${item.tone}::message_tone,
+        ${item.angle}::message_angle,
+        ${item.min_quality_score},
+        ${item.daily_send_target},
+        ${item.follow_up_days},
+        ${item.notes}
+      )
+      on conflict (name) do update set
+        category_id = excluded.category_id,
+        language = excluded.language,
+        tone = excluded.tone,
+        angle = excluded.angle,
+        min_quality_score = excluded.min_quality_score,
+        daily_send_target = excluded.daily_send_target,
+        follow_up_days = excluded.follow_up_days,
+        notes = excluded.notes
+    `;
+  }
+}
+
 async function main() {
   try {
     await upsertLocations();
@@ -112,6 +180,7 @@ async function main() {
     await replaceKeywordPacks(categoryMap);
     await replaceTemplates(categoryMap);
     await upsertSettings();
+    await upsertPlaybooks(categoryMap);
     console.log("Seed complete.");
   } finally {
     await sql.end();

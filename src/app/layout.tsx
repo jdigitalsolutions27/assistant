@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -14,8 +15,13 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "JALA | J-Digital AI Lead Assistant",
+  title: "Client Finder | J-Digital",
   description: "Lead discovery, scoring, and human-in-the-loop outreach workspace for J-Digital Solutions.",
+  icons: {
+    icon: "/LOGOOOO.png",
+    shortcut: "/LOGOOOO.png",
+    apple: "/LOGOOOO.png",
+  },
 };
 
 export default function RootLayout({
@@ -24,9 +30,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${spaceGrotesk.variable} ${plexMono.variable} antialiased`}>
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

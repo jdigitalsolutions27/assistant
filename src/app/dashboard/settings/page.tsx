@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,13 +12,21 @@ import {
   getCategories,
   getKeywordPacks,
   getLocations,
+  mergeDuplicateLeads,
   getScoreWeights,
   setKeywordPack,
   setScoreWeights,
 } from "@/lib/services/data-service";
+import { generateFollowUpDrafts, refreshStaleLeadContacts, runNightlyMaintenance } from "@/lib/services/maintenance-service";
 import { settingsWeightSchema } from "@/lib/validations";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const maintenanceMessage = typeof params.maintenance === "string" ? params.maintenance : null;
   const [categories, locations, keywordPacks, weights] = await Promise.all([
     getCategories(),
     getLocations(),
@@ -69,11 +78,59 @@ export default async function SettingsPage() {
     revalidatePath("/dashboard/settings");
   }
 
+  async function refreshContactsAction(formData: FormData) {
+    "use server";
+    const daysStale = Number(formData.get("days_stale") ?? 21);
+    const limit = Number(formData.get("limit") ?? 60);
+    const result = await refreshStaleLeadContacts({ daysStale, limit });
+    revalidatePath("/dashboard/settings");
+    redirect(
+      `/dashboard/settings?maintenance=${encodeURIComponent(
+        `Recheck complete: ${result.processed} processed, ${result.updated} updated, ${result.unchanged} unchanged.`,
+      )}`,
+    );
+  }
+
+  async function generateFollowUpAction(formData: FormData) {
+    "use server";
+    const daysSinceSent = Number(formData.get("days_since_sent") ?? 3);
+    const limit = Number(formData.get("limit") ?? 60);
+    const result = await generateFollowUpDrafts({ daysSinceSent, limit });
+    revalidatePath("/dashboard/settings");
+    redirect(
+      `/dashboard/settings?maintenance=${encodeURIComponent(
+        `Follow-up drafts: ${result.drafted} created out of ${result.processed} candidates.`,
+      )}`,
+    );
+  }
+
+  async function mergeDuplicatesAction(formData: FormData) {
+    "use server";
+    const limit = Number(formData.get("limit") ?? 200);
+    const result = await mergeDuplicateLeads({ limit });
+    revalidatePath("/dashboard/settings");
+    redirect(`/dashboard/settings?maintenance=${encodeURIComponent(`Duplicate merge: ${result.merged} merged (${result.checked} checked).`)}`);
+  }
+
+  async function runNightlyAction() {
+    "use server";
+    const result = await runNightlyMaintenance();
+    revalidatePath("/dashboard/settings");
+    const assigned = result.campaignAssignments.reduce((sum, item) => sum + item.assigned, 0);
+    const followups = result.followUpDrafts.reduce((sum, item) => sum + item.drafted, 0);
+    redirect(
+      `/dashboard/settings?maintenance=${encodeURIComponent(
+        `Nightly run complete. Assigned ${assigned}, follow-ups ${followups}, contacts updated ${result.contactRefresh.updated}, duplicates merged ${result.duplicateMerge.merged}.`,
+      )}`,
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
         <p className="text-sm text-slate-600">Manage categories, locations, keyword packs, and scoring weights.</p>
+        {maintenanceMessage ? <p className="mt-2 text-sm text-emerald-700">{maintenanceMessage}</p> : null}
       </div>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -172,6 +229,84 @@ export default async function SettingsPage() {
             <div className="self-end">
               <Button type="submit">Save Weights</Button>
             </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Contact Freshness</CardTitle>
+          <CardDescription>Recheck lead websites and refresh Facebook/email when stale.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={refreshContactsAction} className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-1">
+              <Label>Days Stale</Label>
+              <Input name="days_stale" type="number" min={1} max={180} defaultValue={21} required />
+            </div>
+            <div className="space-y-1">
+              <Label>Max Leads Per Run</Label>
+              <Input name="limit" type="number" min={1} max={200} defaultValue={60} required />
+            </div>
+            <div className="self-end">
+              <Button type="submit">Run Recheck</Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Follow-up Draft Engine</CardTitle>
+          <CardDescription>Create follow-up message drafts for stale SENT leads (manual send only).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={generateFollowUpAction} className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-1">
+              <Label>Days Since Sent</Label>
+              <Input name="days_since_sent" type="number" min={1} max={30} defaultValue={3} required />
+            </div>
+            <div className="space-y-1">
+              <Label>Max Leads</Label>
+              <Input name="limit" type="number" min={1} max={300} defaultValue={60} required />
+            </div>
+            <div className="self-end">
+              <Button type="submit">Generate Follow-ups</Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Duplicate Merge</CardTitle>
+          <CardDescription>Consolidate duplicate leads and move messages/events into one master profile.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={mergeDuplicatesAction} className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <div className="space-y-1">
+              <Label>Max Duplicates To Merge</Label>
+              <Input name="limit" type="number" min={1} max={1000} defaultValue={200} required />
+            </div>
+            <div className="self-end">
+              <Button type="submit" variant="secondary">
+                Run Merge
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Nightly Maintenance</CardTitle>
+          <CardDescription>Run assignment, follow-up generation, contact refresh, and duplicate merge in one batch.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={runNightlyAction}>
+            <Button type="submit" variant="outline">
+              Run Full Nightly Now
+            </Button>
           </form>
         </CardContent>
       </Card>

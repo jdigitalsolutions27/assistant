@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { requestJson } from "@/lib/client-http";
 import type { Category, Location } from "@/lib/types";
 
 type Row = Record<string, string | number | null | undefined>;
@@ -48,7 +49,13 @@ export function CsvImportCard({ categories, locations }: { categories: Category[
     setLoading(true);
     setResult(null);
     try {
-      const response = await fetch("/api/ingestion/csv", {
+      const payload = await requestJson<{
+        imported?: number;
+        skipped_duplicates?: number;
+        rejected?: number;
+        errors?: Array<{ row: number; message: string }>;
+        error?: string;
+      }>("/api/ingestion/csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -57,15 +64,18 @@ export function CsvImportCard({ categories, locations }: { categories: Category[
           category_id: categoryId || null,
           location_id: locationId || null,
         }),
+        timeoutMs: 25_000,
+        retries: 1,
+        retryOnStatuses: [429, 500, 502, 503, 504],
       });
-      const payload = (await response.json()) as {
-        imported?: number;
-        rejected?: number;
-        errors?: Array<{ row: number; message: string }>;
-        error?: string;
-      };
-      if (!response.ok) throw new Error(payload.error ?? "Import failed.");
-      setResult(`Imported ${payload.imported ?? 0}, rejected ${payload.rejected ?? 0}.`);
+
+      const errorPreview =
+        payload.errors && payload.errors.length > 0
+          ? ` First issue: row ${payload.errors[0].row} - ${payload.errors[0].message}.`
+          : "";
+      setResult(
+        `Imported ${payload.imported ?? 0}, skipped duplicates ${payload.skipped_duplicates ?? 0}, rejected ${payload.rejected ?? 0}.${errorPreview}`,
+      );
     } catch (error) {
       setResult(error instanceof Error ? error.message : "Import failed.");
     } finally {
@@ -142,10 +152,10 @@ export function CsvImportCard({ categories, locations }: { categories: Category[
             </Button>
           </>
         ) : (
-          <p className="text-sm text-slate-600">Upload a CSV to start column mapping.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Upload a CSV to start column mapping.</p>
         )}
 
-        {result ? <p className="text-sm text-slate-700">{result}</p> : null}
+        {result ? <p className="text-sm text-slate-700 dark:text-slate-200">{result}</p> : null}
       </CardContent>
     </Card>
   );

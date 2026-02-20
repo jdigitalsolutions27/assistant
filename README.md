@@ -28,6 +28,18 @@ Production-ready internal app for J-Digital Solutions to discover, score, and co
 - Manual outreach queue with status pipeline and event logs
 - Analytics (KPIs, breakdowns, A/B variant recommendation)
 - Settings/templates (categories, locations, keywords, weights, templates)
+- Lead quality scoring (`High`/`Medium`/`Low`) and quality-aware filtering
+- Duplicate-safe ingestion (website/Facebook/phone/name+location fingerprinting)
+- Contact freshness maintenance (reverify stale website leads and refresh Facebook/email)
+- Campaign workbench (targeting, auto-assignment, follow-up cadence)
+- Priority queue (top leads to contact next)
+- Today Queue (single-page daily outreach workflow with quick actions)
+- Today Queue follow-up autopilot (generate due follow-up drafts, then manual send)
+- Campaign playbooks (launch reusable campaign presets quickly)
+- Campaign funnel analytics (reply rate, win rate, avg reply hours)
+- Compliance guardrails (template + generated message lint/sanitization)
+- Duplicate guard checker (manual pre-check endpoint + dashboard card)
+- Strategy learning by category + location
 
 ## Routes
 
@@ -36,6 +48,8 @@ Production-ready internal app for J-Digital Solutions to discover, score, and co
 - `/dashboard/prospecting`
 - `/dashboard/leads`
 - `/dashboard/leads/[id]`
+- `/dashboard/today`
+- `/dashboard/campaigns`
 - `/dashboard/templates`
 - `/dashboard/analytics`
 - `/dashboard/settings`
@@ -58,6 +72,8 @@ Recommended:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: `gpt-4.1-mini`)
 - `GOOGLE_PLACES_API_KEY` (for Google Places ingestion)
+- `MAINTENANCE_API_KEY` (optional, for cron/nightly endpoint access)
+- `CRON_SECRET` (optional, if using Vercel Cron with bearer auth)
 
 ## Database Setup
 
@@ -72,6 +88,11 @@ Or separately:
 ```bash
 npm run db:migrate
 npm run db:seed
+
+# aliases
+npm run migrate
+npm run seed
+npm run setup
 ```
 
 ## Local Run
@@ -88,6 +109,38 @@ npm run lint
 npm run build
 ```
 
+## Maintenance Operations
+
+- Reverify stale contact data from Settings:
+  - `Dashboard -> Settings -> Contact Freshness -> Run Recheck`
+- Generate follow-up drafts from campaigns:
+  - `Dashboard -> Campaigns -> Run Follow-up`
+- Run nightly maintenance via API cron:
+  - `GET /api/maintenance/nightly`
+  - Include `x-maintenance-key: MAINTENANCE_API_KEY` header (or use logged-in admin session)
+  - For Vercel Cron, set `MAINTENANCE_API_KEY` equal to `CRON_SECRET`
+- Run morning follow-up draft automation via cron:
+  - `GET /api/maintenance/follow-ups`
+  - Include `Authorization: Bearer CRON_SECRET` (automatic in Vercel Cron)
+
+- Optional API endpoint (admin-auth protected):
+  - `POST /api/maintenance/reverify-stale`
+  - `POST /api/maintenance/follow-ups`
+  - `GET /api/maintenance/follow-ups`
+  - `POST /api/campaigns/assign`
+  - `GET /api/maintenance/nightly`
+  - `POST /api/maintenance/nightly` (admin session or `x-maintenance-key`)
+  - Body:
+
+```json
+{
+  "days_stale": 21,
+  "limit": 60
+}
+```
+
+- CSV and Google Places imports now skip duplicates and report `skipped_duplicates`.
+
 ## Smooth Live Deployment (Recommended)
 
 1. Create a Neon Postgres database (free tier works).
@@ -99,6 +152,7 @@ npm run build
    - `OPENAI_API_KEY` (optional but recommended)
    - `OPENAI_MODEL` (optional)
    - `GOOGLE_PLACES_API_KEY` (optional)
+   - `MAINTENANCE_API_KEY` (optional, for cron/nightly endpoint auth)
 5. After first deploy, run:
    - `npm run db:setup`
 6. Verify:
@@ -121,3 +175,4 @@ docker run -p 3000:3000 --env-file .env.local jala
 - API routes are explicitly `nodejs` runtime for Postgres compatibility.
 - Connection settings are tuned for serverless stability (`prepare: false`, low max connections).
 - Keep credentials out of logs and commits.
+- Rotate any leaked API keys immediately before production deploy.

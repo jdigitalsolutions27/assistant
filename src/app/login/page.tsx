@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createAdminSession, isAuthenticated } from "@/lib/auth";
 import { env } from "@/lib/env";
@@ -5,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function LoginPage({
   searchParams,
@@ -38,10 +40,14 @@ export default async function LoginPage({
 
   return (
     <div className="app-bg flex min-h-screen items-center justify-center p-4">
+      <ThemeToggle className="absolute right-4 top-4 z-10" />
       <Card className="w-full max-w-md">
         <CardHeader>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">J-Digital Solutions</p>
-          <CardTitle className="text-2xl">JALA Admin Login</CardTitle>
+          <div className="mb-1 flex items-center gap-3">
+            <Image src="/LOGOOOO.png" alt="J-Digital logo" width={40} height={40} className="rounded-md object-contain" priority />
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">J-Digital Solutions</p>
+          </div>
+          <CardTitle className="text-2xl">Client Finder Admin Login</CardTitle>
           <CardDescription>
             Secure internal access only. Messaging remains manual inside Meta tools.
           </CardDescription>

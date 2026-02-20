@@ -64,5 +64,5 @@ export const DEFAULT_LOCATIONS = [
   },
 ];
 
-export const DEFAULT_LANGUAGES: MessageLanguage[] = ["Taglish", "English", "Waray"];
+export const DEFAULT_LANGUAGES: MessageLanguage[] = ["Taglish", "English", "Tagalog", "Waray"];
 export const DEFAULT_TONES: MessageTone[] = ["Soft", "Direct", "Value-Focused"];

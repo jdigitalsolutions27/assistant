@@ -1,5 +1,6 @@
 import {
   jsonb,
+  integer,
   numeric,
   pgEnum,
   pgTable,
@@ -30,8 +31,10 @@ export const outreachEventEnum = pgEnum("outreach_event_type", [
 ]);
 
 export const angleEnum = pgEnum("message_angle", ["booking", "low_volume", "organization"]);
-export const languageEnum = pgEnum("message_language", ["Taglish", "English", "Waray"]);
+export const languageEnum = pgEnum("message_language", ["Taglish", "English", "Tagalog", "Waray"]);
 export const toneEnum = pgEnum("message_tone", ["Soft", "Direct", "Value-Focused"]);
+export const campaignStatusEnum = pgEnum("campaign_status", ["ACTIVE", "PAUSED", "ARCHIVED"]);
+export const messageKindEnum = pgEnum("message_kind", ["initial", "follow_up"]);
 
 export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -67,6 +70,7 @@ export const leads = pgTable("leads", {
   phone: varchar("phone", { length: 60 }),
   email: varchar("email", { length: 120 }),
   address: varchar("address", { length: 255 }),
+  campaign_id: uuid("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   source: varchar("source", { length: 64 }).notNull().default("manual"),
   status: leadStatusEnum("status").notNull().default("NEW"),
   score_heuristic: numeric("score_heuristic", { precision: 5, scale: 2, mode: "number" }),
@@ -94,6 +98,7 @@ export const outreachMessages = pgTable("outreach_messages", {
   language: languageEnum("language").notNull(),
   angle: angleEnum("angle").notNull(),
   variant_label: varchar("variant_label", { length: 1 }).notNull(),
+  message_kind: messageKindEnum("message_kind").notNull().default("initial"),
   message_text: text("message_text").notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -136,5 +141,36 @@ export const prospectingConfigs = pgTable("prospecting_configs", {
     .notNull()
     .references(() => locations.id, { onDelete: "cascade" }),
   keywords: text("keywords").array().notNull().default([]),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 140 }).notNull(),
+  category_id: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+  location_id: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
+  language: languageEnum("language").notNull().default("Taglish"),
+  tone: toneEnum("tone").notNull().default("Soft"),
+  angle: angleEnum("angle").notNull().default("booking"),
+  min_quality_score: numeric("min_quality_score", { precision: 5, scale: 2, mode: "number" }).notNull().default(45),
+  daily_send_target: integer("daily_send_target").notNull().default(20),
+  follow_up_days: integer("follow_up_days").notNull().default(3),
+  status: campaignStatusEnum("status").notNull().default("ACTIVE"),
+  notes: text("notes"),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const campaignPlaybooks = pgTable("campaign_playbooks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 140 }).notNull(),
+  category_id: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+  location_id: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
+  language: languageEnum("language").notNull().default("Taglish"),
+  tone: toneEnum("tone").notNull().default("Soft"),
+  angle: angleEnum("angle").notNull().default("booking"),
+  min_quality_score: numeric("min_quality_score", { precision: 5, scale: 2, mode: "number" }).notNull().default(45),
+  daily_send_target: integer("daily_send_target").notNull().default(20),
+  follow_up_days: integer("follow_up_days").notNull().default(3),
+  notes: text("notes"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
