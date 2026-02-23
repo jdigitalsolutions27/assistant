@@ -15,6 +15,7 @@ import {
   getMessageTemplates,
   upsertMessageTemplate,
 } from "@/lib/services/data-service";
+import { requireAdminPage } from "@/lib/auth";
 import { languageSchema, toneSchema } from "@/lib/validations";
 
 export default async function TemplatesPage({
@@ -22,6 +23,8 @@ export default async function TemplatesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdminPage("/dashboard/templates");
+
   const params = await searchParams;
   const notice = typeof params.notice === "string" ? params.notice : null;
   const noticeTone = typeof params.notice_tone === "string" ? params.notice_tone : "neutral";

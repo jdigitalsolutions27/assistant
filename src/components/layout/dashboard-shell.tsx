@@ -5,14 +5,19 @@ import Image from "next/image";
 import { Menu, X } from "lucide-react";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
+import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function DashboardShell({
   children,
   logoutAction,
+  role,
+  displayName,
 }: {
   children: React.ReactNode;
   logoutAction: () => Promise<void>;
+  role: UserRole;
+  displayName: string;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -77,7 +82,10 @@ export function DashboardShell({
             </button>
           </div>
 
-          <DashboardNav mobile />
+          <DashboardNav mobile role={role} />
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Signed in as {displayName} ({role})
+          </p>
 
           <form action={logoutAction} className="mt-auto pt-5">
             <button
@@ -125,7 +133,10 @@ export function DashboardShell({
             </div>
             <ThemeToggle compact className="shrink-0" />
           </div>
-          <DashboardNav />
+          <DashboardNav role={role} />
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Signed in as {displayName} ({role})
+          </p>
           <form action={logoutAction} className="mt-4 md:mt-8">
             <button
               type="submit"

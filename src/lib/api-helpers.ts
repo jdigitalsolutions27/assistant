@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
 import { clientKeyFromHeaders, checkRateLimit } from "@/lib/rate-limit";
-import { requireAdminApi } from "@/lib/auth";
+import { getApiSessionUser, type SessionUser } from "@/lib/auth";
 import { env } from "@/lib/env";
+import type { UserRole } from "@/lib/types";
 import type { NextRequest } from "next/server";
 
-export function enforceApiGuards(
+export async function enforceApiGuards(
   request: NextRequest,
-  options?: { max?: number; windowMs?: number; bucket?: string },
-): NextResponse | null {
-  if (!requireAdminApi(request)) {
+  options?: { max?: number; windowMs?: number; bucket?: string; roles?: UserRole[] },
+): Promise<NextResponse | null> {
+  const user = await getApiSessionUser(request);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const allowedRoles = options?.roles ?? ["ADMIN"];
+  if (!allowedRoles.includes(user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const key = clientKeyFromHeaders(request.headers);
@@ -21,6 +27,14 @@ export function enforceApiGuards(
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
+  return null;
+}
+
+export function ensureCategoryAccess(user: SessionUser, requestedCategoryId: string): NextResponse | null {
+  if (user.role === "ADMIN") return null;
+  if (!user.assigned_category_id || user.assigned_category_id !== requestedCategoryId) {
+    return NextResponse.json({ error: "Forbidden: category is not assigned to your account." }, { status: 403 });
+  }
   return null;
 }
 

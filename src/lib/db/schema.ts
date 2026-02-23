@@ -1,4 +1,5 @@
 import {
+  boolean,
   jsonb,
   integer,
   numeric,
@@ -35,6 +36,7 @@ export const languageEnum = pgEnum("message_language", ["Taglish", "English", "T
 export const toneEnum = pgEnum("message_tone", ["Soft", "Direct", "Value-Focused"]);
 export const campaignStatusEnum = pgEnum("campaign_status", ["ACTIVE", "PAUSED", "ARCHIVED"]);
 export const messageKindEnum = pgEnum("message_kind", ["initial", "follow_up"]);
+export const userRoleEnum = pgEnum("user_role", ["ADMIN", "AGENT"]);
 
 export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -172,5 +174,28 @@ export const campaignPlaybooks = pgTable("campaign_playbooks", {
   daily_send_target: integer("daily_send_target").notNull().default(20),
   follow_up_days: integer("follow_up_days").notNull().default(3),
   notes: text("notes"),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userAccounts = pgTable("user_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  username: varchar("username", { length: 120 }).notNull().unique(),
+  display_name: varchar("display_name", { length: 120 }).notNull(),
+  password_hash: text("password_hash").notNull(),
+  role: userRoleEnum("role").notNull().default("AGENT"),
+  assigned_category_id: uuid("assigned_category_id").references(() => categories.id, { onDelete: "set null" }),
+  is_active: boolean("is_active").notNull().default(true),
+  must_change_password: boolean("must_change_password").notNull().default(false),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userSessions = pgTable("user_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  user_id: uuid("user_id")
+    .notNull()
+    .references(() => userAccounts.id, { onDelete: "cascade" }),
+  token_hash: varchar("token_hash", { length: 128 }).notNull().unique(),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -7,7 +7,7 @@ import { getCategories } from "@/lib/services/data-service";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "conversation-reply" });
+  const guard = await enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "conversation-reply" });
   if (guard) return guard;
 
   try {

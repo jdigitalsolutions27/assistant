@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CAMPAIGN_STATUSES, EVENT_TYPES, LEAD_STATUSES, MESSAGE_ANGLES, MESSAGE_LANGUAGES, MESSAGE_TONES } from "@/lib/types";
+import { CAMPAIGN_STATUSES, EVENT_TYPES, LEAD_STATUSES, MESSAGE_ANGLES, MESSAGE_LANGUAGES, MESSAGE_TONES, USER_ROLES } from "@/lib/types";
 
 export const leadStatusSchema = z.enum(LEAD_STATUSES);
 export const eventTypeSchema = z.enum(EVENT_TYPES);
@@ -7,6 +7,7 @@ export const angleSchema = z.enum(MESSAGE_ANGLES);
 export const languageSchema = z.enum(MESSAGE_LANGUAGES);
 export const toneSchema = z.enum(MESSAGE_TONES);
 export const campaignStatusSchema = z.enum(CAMPAIGN_STATUSES);
+export const userRoleSchema = z.enum(USER_ROLES);
 
 export const leadUpsertSchema = z
   .object({
@@ -176,4 +177,59 @@ export const followUpRunSchema = z.object({
   campaign_id: z.string().uuid().optional(),
   days_since_sent: z.number().int().min(1).max(30).default(3),
   limit: z.number().int().min(1).max(300).default(60),
+});
+
+const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3)
+  .max(120)
+  .regex(/^[a-z0-9._-]+$/, "Username can only contain lowercase letters, numbers, dot, underscore, and hyphen.");
+
+export const userCreateSchema = z
+  .object({
+    username: usernameSchema,
+    display_name: z.string().trim().min(2).max(120),
+    password: z.string().min(8).max(128),
+    role: userRoleSchema,
+    assigned_category_id: z.string().uuid().nullable().optional(),
+    is_active: z.boolean().default(true),
+    must_change_password: z.boolean().default(false),
+  })
+  .superRefine((value, ctx) => {
+    if (value.role === "AGENT" && !value.assigned_category_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Assigned category is required for agent accounts.",
+        path: ["assigned_category_id"],
+      });
+    }
+  });
+
+export const userAccessUpdateSchema = z
+  .object({
+    user_id: z.string().uuid(),
+    role: userRoleSchema,
+    assigned_category_id: z.string().uuid().nullable().optional(),
+    is_active: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.role === "AGENT" && !value.assigned_category_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Assigned category is required for agent accounts.",
+        path: ["assigned_category_id"],
+      });
+    }
+  });
+
+export const userPasswordResetSchema = z.object({
+  user_id: z.string().uuid(),
+  password: z.string().min(8).max(128),
+  must_change_password: z.boolean().default(false),
+});
+
+export const userDeleteSchema = z.object({
+  user_id: z.string().uuid(),
 });

@@ -54,6 +54,12 @@ Production-ready internal app for J-Digital Solutions to discover, score, and co
 - `/dashboard/analytics`
 - `/dashboard/settings`
 
+## Access Model (Multi-User)
+
+- `ADMIN`: full access to all pages and APIs.
+- `AGENT`: prospecting only (`/dashboard/prospecting`), category-scoped, no lead import/settings access.
+- Admin can create users, assign one category per agent, activate/deactivate accounts, and reset passwords from `Dashboard -> Settings`.
+
 ## Environment Variables
 
 Copy:
@@ -65,7 +71,7 @@ cp .env.example .env.local
 Required:
 
 - `DATABASE_URL`
-- `ADMIN_PASSWORD`
+- `ADMIN_PASSWORD` (bootstrap admin password, minimum 8 characters)
 
 Recommended:
 
@@ -162,6 +168,11 @@ npm run build
    - Lead scoring
    - Message generation
    - Manual queue events/status updates
+
+Bootstrap login after first seed:
+
+- Username: `admin`
+- Password: your `ADMIN_PASSWORD`
 
 ## Docker (Optional)
 

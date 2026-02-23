@@ -16,6 +16,7 @@ import {
   outreachEvents,
   outreachMessages,
   prospectingConfigs,
+  userAccounts,
 } from "@/lib/db/schema";
 import { computeLeadQualityScore, normalizePhone, qualityTierFromScore } from "@/lib/lead-quality";
 import type {
@@ -36,6 +37,8 @@ import type {
   OutreachMessage,
   ProspectingConfig,
   ScoreWeights,
+  UserAccount,
+  UserRole,
 } from "@/lib/types";
 
 const DEFAULT_WEIGHTS: ScoreWeights = {
@@ -173,6 +176,20 @@ function mapProspectingConfig(row: typeof prospectingConfigs.$inferSelect): Pros
   };
 }
 
+function mapUserAccount(row: typeof userAccounts.$inferSelect): UserAccount {
+  return {
+    id: row.id,
+    username: row.username,
+    display_name: row.display_name,
+    role: row.role as UserRole,
+    assigned_category_id: row.assigned_category_id,
+    is_active: row.is_active,
+    must_change_password: row.must_change_password,
+    created_at: toIso(row.created_at)!,
+    updated_at: toIso(row.updated_at)!,
+  };
+}
+
 export async function getCategories(): Promise<Category[]> {
   const rows = await getDb().select().from(categories).orderBy(asc(categories.name));
   return rows.map(mapCategory);
@@ -246,6 +263,93 @@ export async function deleteMessageTemplate(templateId: string): Promise<void> {
 export async function getProspectingConfigs(): Promise<ProspectingConfig[]> {
   const rows = await getDb().select().from(prospectingConfigs).orderBy(desc(prospectingConfigs.created_at));
   return rows.map(mapProspectingConfig);
+}
+
+export async function getUserAccounts(): Promise<UserAccount[]> {
+  const rows = await getDb().select().from(userAccounts).orderBy(asc(userAccounts.username));
+  return rows.map(mapUserAccount);
+}
+
+export async function getUserByUsernameWithPassword(username: string): Promise<(UserAccount & { password_hash: string }) | null> {
+  const normalized = username.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const rows = await getDb().select().from(userAccounts).where(eq(userAccounts.username, normalized)).limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    ...mapUserAccount(row),
+    password_hash: row.password_hash,
+  };
+}
+
+export async function getUserById(userId: string): Promise<UserAccount | null> {
+  const rows = await getDb().select().from(userAccounts).where(eq(userAccounts.id, userId)).limit(1);
+  return rows[0] ? mapUserAccount(rows[0]) : null;
+}
+
+export async function hasAnyUsers(): Promise<boolean> {
+  const rows = await getDb().select({ id: userAccounts.id }).from(userAccounts).limit(1);
+  return rows.length > 0;
+}
+
+export async function createUserAccount(payload: {
+  username: string;
+  display_name: string;
+  password_hash: string;
+  role: UserRole;
+  assigned_category_id?: string | null;
+  is_active?: boolean;
+  must_change_password?: boolean;
+}): Promise<UserAccount> {
+  const rows = await getDb()
+    .insert(userAccounts)
+    .values({
+      username: payload.username.trim().toLowerCase(),
+      display_name: payload.display_name.trim(),
+      password_hash: payload.password_hash,
+      role: payload.role,
+      assigned_category_id: payload.role === "AGENT" ? payload.assigned_category_id ?? null : null,
+      is_active: payload.is_active ?? true,
+      must_change_password: payload.must_change_password ?? false,
+    })
+    .returning();
+
+  if (!rows[0]) throw new Error("Failed to create user account.");
+  return mapUserAccount(rows[0]);
+}
+
+export async function updateUserPasswordHash(userId: string, passwordHash: string, mustChangePassword = false): Promise<void> {
+  await getDb()
+    .update(userAccounts)
+    .set({
+      password_hash: passwordHash,
+      must_change_password: mustChangePassword,
+      updated_at: new Date(),
+    })
+    .where(eq(userAccounts.id, userId));
+}
+
+export async function updateUserAccess(payload: {
+  userId: string;
+  role: UserRole;
+  assigned_category_id?: string | null;
+  is_active: boolean;
+}): Promise<void> {
+  await getDb()
+    .update(userAccounts)
+    .set({
+      role: payload.role,
+      assigned_category_id: payload.role === "AGENT" ? payload.assigned_category_id ?? null : null,
+      is_active: payload.is_active,
+      updated_at: new Date(),
+    })
+    .where(eq(userAccounts.id, payload.userId));
+}
+
+export async function deleteUserAccount(userId: string): Promise<void> {
+  await getDb().delete(userAccounts).where(eq(userAccounts.id, userId));
 }
 
 export async function getCampaigns(options?: {

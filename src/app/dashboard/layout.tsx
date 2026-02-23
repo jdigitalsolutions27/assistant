@@ -1,15 +1,19 @@
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { clearAdminSession, requireAdminPage } from "@/lib/auth";
+import { clearSession, requireAuthenticatedPage } from "@/lib/auth";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminPage("/dashboard");
+  const user = await requireAuthenticatedPage("/dashboard");
 
   async function logoutAction() {
     "use server";
-    await clearAdminSession();
+    await clearSession();
     redirect("/login");
   }
 
-  return <DashboardShell logoutAction={logoutAction}>{children}</DashboardShell>;
+  return (
+    <DashboardShell logoutAction={logoutAction} role={user.role} displayName={user.display_name}>
+      {children}
+    </DashboardShell>
+  );
 }

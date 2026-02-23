@@ -9,9 +9,12 @@ import {
   getRecommendedMessageStrategiesByCategoryLocation,
   getRecommendedMessageStrategiesByCategory,
 } from "@/lib/services/data-service";
+import { requireAdminPage } from "@/lib/auth";
 import { toPercent } from "@/lib/utils";
 
 export default async function AnalyticsPage() {
+  await requireAdminPage("/dashboard/analytics");
+
   const [kpis, breakdowns, bestVariants, campaignFunnel, strategyRecommendations, strategyByCategoryLocation] = await Promise.all([
     getDashboardKpis(),
     getBreakdowns(),

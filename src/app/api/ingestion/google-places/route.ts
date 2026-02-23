@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { enforceApiGuards, jsonError } from "@/lib/api-helpers";
+import { getApiSessionUser } from "@/lib/auth";
+import { enforceApiGuards, ensureCategoryAccess, jsonError } from "@/lib/api-helpers";
 import { env } from "@/lib/env";
 import { normalizeUrl } from "@/lib/utils";
 import { googlePlacesSearchSchema } from "@/lib/validations";
@@ -187,16 +188,25 @@ function computeRelevanceScore(
 }
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 14, windowMs: 60_000, bucket: "places-search" });
+  const guard = await enforceApiGuards(request, { max: 14, windowMs: 60_000, bucket: "places-search", roles: ["ADMIN", "AGENT"] });
   if (guard) return guard;
 
   try {
+    const user = await getApiSessionUser(request);
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     if (!env.GOOGLE_PLACES_API_KEY) {
       return NextResponse.json({ error: "GOOGLE_PLACES_API_KEY is not configured." }, { status: 400 });
     }
 
     const body = await request.json();
     const payload = googlePlacesSearchSchema.parse(body);
+    const categoryGuard = ensureCategoryAccess(user, payload.category_id);
+    if (categoryGuard) return categoryGuard;
+    if (user.role === "AGENT" && payload.import_leads) {
+      return NextResponse.json({ error: "Forbidden: agents cannot import leads." }, { status: 403 });
+    }
+
     const [categories, locations] = await Promise.all([getCategories(), getLocations()]);
     const category = categories.find((item) => item.id === payload.category_id);
     const location = locations.find((item) => item.id === payload.location_id);

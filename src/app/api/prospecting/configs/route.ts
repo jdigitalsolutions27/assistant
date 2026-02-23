@@ -17,7 +17,7 @@ const deleteSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "prospecting-configs" });
+  const guard = await enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "prospecting-configs" });
   if (guard) return guard;
 
   try {
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "prospecting-configs-delete" });
+  const guard = await enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "prospecting-configs-delete" });
   if (guard) return guard;
 
   try {

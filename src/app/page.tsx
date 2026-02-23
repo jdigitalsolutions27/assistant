@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { isAuthenticated } from "@/lib/auth";
+import { getDashboardPathForUser, getSessionUser } from "@/lib/auth";
 
 export default async function Home() {
-  const authed = await isAuthenticated();
-  if (authed) redirect("/dashboard");
+  const user = await getSessionUser();
+  if (user) redirect(getDashboardPathForUser(user));
   redirect("/login");
 }

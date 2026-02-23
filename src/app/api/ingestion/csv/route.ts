@@ -7,7 +7,7 @@ import { normalizeUrl } from "@/lib/utils";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "csv-import" });
+  const guard = await enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "csv-import" });
   if (guard) return guard;
 
   try {

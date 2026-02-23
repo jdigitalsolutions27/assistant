@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateQuickMessageVariants } from "@/lib/ai";
-import { enforceApiGuards, jsonError } from "@/lib/api-helpers";
+import { getApiSessionUser } from "@/lib/auth";
+import { enforceApiGuards, ensureCategoryAccess, jsonError } from "@/lib/api-helpers";
 import { lintOutreachText, sanitizeMessageVariants } from "@/lib/compliance";
 import { computeLeadQualityScore } from "@/lib/lead-quality";
 import {
@@ -141,12 +142,25 @@ function evaluateRowFit(row: BatchPreviewLead, categoryId: string, locationId: s
 }
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 12, windowMs: 60_000, bucket: "prospecting-batch-message" });
+  const guard = await enforceApiGuards(request, {
+    max: 12,
+    windowMs: 60_000,
+    bucket: "prospecting-batch-message",
+    roles: ["ADMIN", "AGENT"],
+  });
   if (guard) return guard;
 
   try {
+    const user = await getApiSessionUser(request);
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await request.json();
     const payload = prospectingBatchMessageSchema.parse(body);
+    const categoryGuard = ensureCategoryAccess(user, payload.category_id);
+    if (categoryGuard) return categoryGuard;
+    if (user.role === "AGENT" && payload.import_and_save) {
+      return NextResponse.json({ error: "Forbidden: agents cannot import and save leads." }, { status: 403 });
+    }
 
     const [categories, locations] = await Promise.all([getCategories(), getLocations()]);
     const category = categories.find((item) => item.id === payload.category_id);

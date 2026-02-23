@@ -21,15 +21,15 @@ async function run(payload: {
   });
 }
 
-function ensureAuthorized(request: NextRequest, bucket: string) {
-  const adminGuard = enforceApiGuards(request, { max: 4, windowMs: 60_000, bucket });
+async function ensureAuthorized(request: NextRequest, bucket: string) {
+  const adminGuard = await enforceApiGuards(request, { max: 4, windowMs: 60_000, bucket });
   const internalTokenOk = requireMaintenanceToken(request);
   if (adminGuard && !internalTokenOk) return adminGuard;
   return null;
 }
 
 export async function POST(request: NextRequest) {
-  const guard = ensureAuthorized(request, "maintenance-nightly");
+  const guard = await ensureAuthorized(request, "maintenance-nightly");
   if (guard) return guard;
 
   try {
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const guard = ensureAuthorized(request, "maintenance-nightly-get");
+  const guard = await ensureAuthorized(request, "maintenance-nightly-get");
   if (guard) return guard;
 
   try {

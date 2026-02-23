@@ -15,7 +15,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const guard = enforceApiGuards(request, { max: 25, windowMs: 60_000, bucket: "generate-messages" });
+  const guard = await enforceApiGuards(request, { max: 25, windowMs: 60_000, bucket: "generate-messages" });
   if (guard) return guard;
 
   try {
@@ -65,3 +65,4 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return jsonError(error, 400);
   }
 }
+

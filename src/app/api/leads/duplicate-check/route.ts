@@ -22,7 +22,7 @@ const duplicateCheckSchema = z
   });
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 30, windowMs: 60_000, bucket: "duplicate-check" });
+  const guard = await enforceApiGuards(request, { max: 30, windowMs: 60_000, bucket: "duplicate-check" });
   if (guard) return guard;
 
   try {

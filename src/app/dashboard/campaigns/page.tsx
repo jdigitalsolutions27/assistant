@@ -20,6 +20,7 @@ import {
   getPriorityLeads,
   updateCampaignStatus,
 } from "@/lib/services/data-service";
+import { requireAdminPage } from "@/lib/auth";
 import { generateFollowUpDrafts } from "@/lib/services/maintenance-service";
 import { campaignCreateSchema, campaignPlaybookCreateSchema } from "@/lib/validations";
 
@@ -28,6 +29,8 @@ export default async function CampaignsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdminPage("/dashboard/campaigns");
+
   const params = await searchParams;
   const selectedCampaignId = typeof params.campaign === "string" ? params.campaign : "";
   const message = typeof params.message === "string" ? params.message : null;

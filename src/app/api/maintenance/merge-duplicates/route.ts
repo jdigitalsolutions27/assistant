@@ -10,7 +10,7 @@ const payloadSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 8, windowMs: 60_000, bucket: "maintenance-merge-duplicates" });
+  const guard = await enforceApiGuards(request, { max: 8, windowMs: 60_000, bucket: "maintenance-merge-duplicates" });
   if (guard) return guard;
 
   try {

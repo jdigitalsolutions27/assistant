@@ -9,7 +9,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: emptyToUndefined,
   OPENAI_MODEL: z.preprocess((value) => (value === "" ? undefined : value), z.string().default("gpt-4.1-mini")),
   GOOGLE_PLACES_API_KEY: emptyToUndefined,
-  ADMIN_PASSWORD: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(6).optional()),
+  ADMIN_PASSWORD: z.preprocess((value) => (value === "" ? undefined : value), z.string().min(8).optional()),
   DATABASE_URL: emptyToUndefined,
   MAINTENANCE_API_KEY: emptyToUndefined,
   CRON_SECRET: emptyToUndefined,

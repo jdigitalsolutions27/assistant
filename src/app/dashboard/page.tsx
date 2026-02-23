@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireAdminPage } from "@/lib/auth";
 import {
   getBreakdowns,
   getCampaigns,
@@ -12,6 +13,8 @@ import {
 import { toPercent } from "@/lib/utils";
 
 export default async function DashboardPage() {
+  await requireAdminPage("/dashboard");
+
   const [kpis, breakdowns, campaigns, priority, followUpDue, strategyRecommendations] = await Promise.all([
     getDashboardKpis(),
     getBreakdowns(),

@@ -20,7 +20,7 @@ async function runWithPayload(payloadInput: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 10, windowMs: 60_000, bucket: "maintenance-followups" });
+  const guard = await enforceApiGuards(request, { max: 10, windowMs: 60_000, bucket: "maintenance-followups" });
   if (guard) return guard;
 
   try {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const adminGuard = enforceApiGuards(request, { max: 10, windowMs: 60_000, bucket: "maintenance-followups-get" });
+  const adminGuard = await enforceApiGuards(request, { max: 10, windowMs: 60_000, bucket: "maintenance-followups-get" });
   const internalTokenOk = requireMaintenanceToken(request);
   if (adminGuard && !internalTokenOk) return adminGuard;
 

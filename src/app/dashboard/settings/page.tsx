@@ -4,36 +4,52 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmActionForm } from "@/components/ui/confirm-action-form";
 import {
   addCategory,
   addLocation,
+  createUserAccount,
+  deleteUserAccount,
   getCategories,
   getKeywordPacks,
   getLocations,
   mergeDuplicateLeads,
+  getUserAccounts,
   getScoreWeights,
   setKeywordPack,
   setScoreWeights,
+  updateUserAccess,
+  updateUserPasswordHash,
 } from "@/lib/services/data-service";
+import { requireAdminPage } from "@/lib/auth";
+import { hashPassword } from "@/lib/password";
 import { generateFollowUpDrafts, refreshStaleLeadContacts, runNightlyMaintenance } from "@/lib/services/maintenance-service";
-import { settingsWeightSchema } from "@/lib/validations";
+import { settingsWeightSchema, userAccessUpdateSchema, userCreateSchema, userDeleteSchema, userPasswordResetSchema } from "@/lib/validations";
 
 export default async function SettingsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const adminUser = await requireAdminPage("/dashboard/settings");
   const params = await searchParams;
   const maintenanceMessage = typeof params.maintenance === "string" ? params.maintenance : null;
-  const [categories, locations, keywordPacks, weights] = await Promise.all([
+  const accountMessage = typeof params.account === "string" ? params.account : null;
+  const [categories, locations, keywordPacks, weights, users] = await Promise.all([
     getCategories(),
     getLocations(),
     getKeywordPacks(),
     getScoreWeights(),
+    getUserAccounts(),
   ]);
   const keywordMap = new Map(keywordPacks.map((pack) => [pack.category_id, pack.keywords]));
+  const categoryMap = new Map(categories.map((item) => [item.id, item.name]));
+  const activeUsers = users.filter((item) => item.is_active).length;
+  const adminUsers = users.filter((item) => item.role === "ADMIN").length;
+  const agentUsers = users.filter((item) => item.role === "AGENT").length;
 
   async function addCategoryAction(formData: FormData) {
     "use server";
@@ -76,6 +92,107 @@ export default async function SettingsPage({
     }
     await setScoreWeights(parsed);
     revalidatePath("/dashboard/settings");
+  }
+
+  async function createUserAction(formData: FormData) {
+    "use server";
+    try {
+      const parsed = userCreateSchema.parse({
+        username: String(formData.get("username") ?? ""),
+        display_name: String(formData.get("display_name") ?? ""),
+        password: String(formData.get("password") ?? ""),
+        role: String(formData.get("role") ?? "AGENT"),
+        assigned_category_id: String(formData.get("assigned_category_id") ?? "") || null,
+        is_active: String(formData.get("is_active") ?? "") === "on",
+        must_change_password: String(formData.get("must_change_password") ?? "") === "on",
+      });
+
+      const password_hash = await hashPassword(parsed.password);
+      await createUserAccount({
+        username: parsed.username,
+        display_name: parsed.display_name,
+        password_hash,
+        role: parsed.role,
+        assigned_category_id: parsed.assigned_category_id ?? null,
+        is_active: parsed.is_active,
+        must_change_password: parsed.must_change_password,
+      });
+
+      revalidatePath("/dashboard/settings");
+      redirect("/dashboard/settings?account=User%20account%20created.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create user account.";
+      redirect(`/dashboard/settings?account=${encodeURIComponent(message)}`);
+    }
+  }
+
+  async function updateUserAccessAction(formData: FormData) {
+    "use server";
+    try {
+      const parsed = userAccessUpdateSchema.parse({
+        user_id: String(formData.get("user_id") ?? ""),
+        role: String(formData.get("role") ?? "AGENT"),
+        assigned_category_id: String(formData.get("assigned_category_id") ?? "") || null,
+        is_active: String(formData.get("is_active") ?? "") === "on",
+      });
+
+      if (parsed.user_id === adminUser.id && !parsed.is_active) {
+        throw new Error("You cannot deactivate your own account.");
+      }
+
+      await updateUserAccess({
+        userId: parsed.user_id,
+        role: parsed.role,
+        assigned_category_id: parsed.assigned_category_id ?? null,
+        is_active: parsed.is_active,
+      });
+
+      revalidatePath("/dashboard/settings");
+      redirect("/dashboard/settings?account=User%20access%20updated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update user access.";
+      redirect(`/dashboard/settings?account=${encodeURIComponent(message)}`);
+    }
+  }
+
+  async function resetPasswordAction(formData: FormData) {
+    "use server";
+    try {
+      const parsed = userPasswordResetSchema.parse({
+        user_id: String(formData.get("user_id") ?? ""),
+        password: String(formData.get("password") ?? ""),
+        must_change_password: String(formData.get("must_change_password") ?? "") === "on",
+      });
+
+      const hash = await hashPassword(parsed.password);
+      await updateUserPasswordHash(parsed.user_id, hash, parsed.must_change_password);
+
+      revalidatePath("/dashboard/settings");
+      redirect("/dashboard/settings?account=Password%20updated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to reset password.";
+      redirect(`/dashboard/settings?account=${encodeURIComponent(message)}`);
+    }
+  }
+
+  async function deleteUserAction(formData: FormData) {
+    "use server";
+    try {
+      const parsed = userDeleteSchema.parse({
+        user_id: String(formData.get("user_id") ?? ""),
+      });
+
+      if (parsed.user_id === adminUser.id) {
+        throw new Error("You cannot delete your own account.");
+      }
+
+      await deleteUserAccount(parsed.user_id);
+      revalidatePath("/dashboard/settings");
+      redirect("/dashboard/settings?account=User%20account%20deleted.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete user account.";
+      redirect(`/dashboard/settings?account=${encodeURIComponent(message)}`);
+    }
   }
 
   async function refreshContactsAction(formData: FormData) {
@@ -128,9 +245,18 @@ export default async function SettingsPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-        <p className="text-sm text-slate-600">Manage categories, locations, keyword packs, and scoring weights.</p>
-        {maintenanceMessage ? <p className="mt-2 text-sm text-emerald-700">{maintenanceMessage}</p> : null}
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Settings</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Manage categories, locations, keyword packs, scoring weights, and user access.</p>
+        {maintenanceMessage ? (
+          <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+            {maintenanceMessage}
+          </p>
+        ) : null}
+        {accountMessage ? (
+          <p className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300">
+            {accountMessage}
+          </p>
+        ) : null}
       </div>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -186,6 +312,194 @@ export default async function SettingsPage({
           </CardContent>
         </Card>
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>User Accounts</CardTitle>
+          <CardDescription>Create agent/admin accounts and control category access.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+              <p className="text-xs text-slate-600 dark:text-slate-300">Total users</p>
+              <p className="text-xl font-semibold text-slate-900 dark:text-slate-100">{users.length}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+              <p className="text-xs text-slate-600 dark:text-slate-300">Active</p>
+              <p className="text-xl font-semibold text-emerald-700 dark:text-emerald-300">{activeUsers}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+              <p className="text-xs text-slate-600 dark:text-slate-300">Admins</p>
+              <p className="text-xl font-semibold text-slate-900 dark:text-slate-100">{adminUsers}</p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+              <p className="text-xs text-slate-600 dark:text-slate-300">Agents</p>
+              <p className="text-xl font-semibold text-slate-900 dark:text-slate-100">{agentUsers}</p>
+            </div>
+          </div>
+
+          <form action={createUserAction} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-800/40">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-1">
+                <Label>Username</Label>
+                <Input name="username" placeholder="agent.spa.01" required />
+              </div>
+              <div className="space-y-1">
+                <Label>Display Name</Label>
+                <Input name="display_name" placeholder="Spa Agent 01" required />
+              </div>
+              <div className="space-y-1">
+                <Label>Initial Password</Label>
+                <PasswordInput name="password" minLength={8} required />
+              </div>
+              <div className="space-y-1">
+                <Label>Role</Label>
+                <Select name="role" defaultValue="AGENT">
+                  <option value="AGENT">AGENT</option>
+                  <option value="ADMIN">ADMIN</option>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Assigned Category (for agents)</Label>
+                <Select name="assigned_category_id" defaultValue={categories[0]?.id ?? ""}>
+                  <option value="">None</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Options</Label>
+                <div className="flex min-h-10 flex-wrap items-center gap-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                  <label className="inline-flex items-center gap-1">
+                    <input type="checkbox" name="is_active" defaultChecked />
+                    Active
+                  </label>
+                  <label className="inline-flex items-center gap-1">
+                    <input type="checkbox" name="must_change_password" />
+                    Must change password
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <Button type="submit">Create User Account</Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Existing Accounts</CardTitle>
+          <CardDescription>{users.length} user accounts currently configured.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {users.map((user) => (
+            <details key={user.id} className="group rounded-lg border border-slate-200 bg-white/70 transition-colors open:bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/50 dark:open:bg-slate-800/40">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {user.display_name} <span className="font-normal text-slate-600 dark:text-slate-300">({user.username})</span>
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    Assigned: {user.assigned_category_id ? categoryMap.get(user.assigned_category_id) ?? "Unknown category" : "None"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-full border border-slate-300 px-2 py-1 font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200">
+                    {user.role}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-1 font-medium ${
+                      user.is_active
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    }`}
+                  >
+                    {user.is_active ? "Active" : "Inactive"}
+                  </span>
+                  {user.id === adminUser.id ? (
+                    <span className="rounded-full bg-blue-100 px-2 py-1 font-medium text-blue-700 dark:bg-sky-900/40 dark:text-sky-300">You</span>
+                  ) : null}
+                </div>
+              </summary>
+
+              <div className="grid gap-3 border-t border-slate-200 px-4 py-4 dark:border-slate-700 lg:grid-cols-2">
+                <form action={updateUserAccessAction} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                  <input type="hidden" name="user_id" value={user.id} />
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Access</p>
+                  <div className="grid gap-2">
+                    <div className="space-y-1">
+                      <Label>Role</Label>
+                      <Select name="role" defaultValue={user.role}>
+                        <option value="AGENT">AGENT</option>
+                        <option value="ADMIN">ADMIN</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Assigned Category</Label>
+                      <Select name="assigned_category_id" defaultValue={user.assigned_category_id ?? ""}>
+                        <option value="">None</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                      <input type="checkbox" name="is_active" defaultChecked={user.is_active} />
+                      Active
+                    </label>
+                    <Button type="submit" variant="outline">
+                      Save Access
+                    </Button>
+                  </div>
+                </form>
+
+                <form action={resetPasswordAction} className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                  <input type="hidden" name="user_id" value={user.id} />
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Password</p>
+                  <div className="grid gap-2">
+                    <div className="space-y-1">
+                      <Label>New Password</Label>
+                      <PasswordInput name="password" minLength={8} required />
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                      <input type="checkbox" name="must_change_password" defaultChecked={user.must_change_password} />
+                      Force password change on next login
+                    </label>
+                    <Button type="submit" variant="secondary">
+                      Reset Password
+                    </Button>
+                  </div>
+                </form>
+
+                <div className="rounded-md border border-rose-200 bg-rose-50/70 p-3 dark:border-rose-900/50 dark:bg-rose-950/20 lg:col-span-2">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Danger Zone</p>
+                  {user.id !== adminUser.id ? (
+                    <ConfirmActionForm
+                      action={deleteUserAction}
+                      fields={{ user_id: user.id }}
+                      buttonLabel="Delete User"
+                      confirmTitle="Delete User Account?"
+                      confirmDescription={`This will permanently delete ${user.display_name} (${user.username}) and all active sessions.`}
+                      buttonVariant="destructive"
+                      buttonSize="sm"
+                    />
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Current session account cannot be deleted.</p>
+                  )}
+                </div>
+              </div>
+            </details>
+          ))}
+          {users.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">No user accounts yet.</p> : null}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

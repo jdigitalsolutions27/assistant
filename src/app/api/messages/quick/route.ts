@@ -8,7 +8,7 @@ import { getCategories, getTemplateFor } from "@/lib/services/data-service";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 25, windowMs: 60_000, bucket: "quick-message" });
+  const guard = await enforceApiGuards(request, { max: 25, windowMs: 60_000, bucket: "quick-message" });
   if (guard) return guard;
 
   try {

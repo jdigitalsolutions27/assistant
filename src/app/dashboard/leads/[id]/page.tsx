@@ -6,9 +6,12 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getCampaigns, getCategories, getLeadById, getLocations } from "@/lib/services/data-service";
+import { requireAdminPage } from "@/lib/auth";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await requireAdminPage(`/dashboard/leads/${id}`);
+
   const [bundle, categories, locations, campaigns] = await Promise.all([
     getLeadById(id),
     getCategories(),

@@ -6,7 +6,7 @@ import { campaignAssignSchema } from "@/lib/validations";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 10, windowMs: 60_000, bucket: "campaign-assign" });
+  const guard = await enforceApiGuards(request, { max: 10, windowMs: 60_000, bucket: "campaign-assign" });
   if (guard) return guard;
 
   try {

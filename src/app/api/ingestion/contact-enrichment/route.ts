@@ -10,7 +10,7 @@ const payloadSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 60, windowMs: 60_000, bucket: "contact-enrichment" });
+  const guard = await enforceApiGuards(request, { max: 60, windowMs: 60_000, bucket: "contact-enrichment", roles: ["ADMIN", "AGENT"] });
   if (guard) return guard;
 
   try {

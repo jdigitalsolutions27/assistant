@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 import postgres from "postgres";
 import { DEFAULT_CATEGORY_SEEDS, DEFAULT_LANGUAGES, DEFAULT_LOCATIONS, DEFAULT_TONES } from "../src/lib/constants";
+import { hashPassword } from "../src/lib/password";
 
 config({ path: ".env.local" });
 config({ path: ".env" });
@@ -173,6 +174,36 @@ async function upsertPlaybooks(categoryMap: Map<string, string>): Promise<void> 
   }
 }
 
+async function ensureBootstrapAdmin(): Promise<void> {
+  const rawPassword = process.env.ADMIN_PASSWORD?.trim();
+  if (!rawPassword) {
+    console.warn("ADMIN_PASSWORD is not set. Skipping bootstrap admin account creation.");
+    return;
+  }
+
+  const existingAdmin = await sql<{ id: string }[]>`
+    select id from user_accounts where role = 'ADMIN'::user_role limit 1
+  `;
+
+  if (existingAdmin.length > 0) return;
+
+  const passwordHash = await hashPassword(rawPassword);
+  await sql`
+    insert into user_accounts (username, display_name, password_hash, role, is_active, must_change_password)
+    values ('admin', 'Administrator', ${passwordHash}, 'ADMIN'::user_role, true, false)
+    on conflict (username)
+    do update set
+      display_name = excluded.display_name,
+      password_hash = excluded.password_hash,
+      role = 'ADMIN'::user_role,
+      is_active = true,
+      must_change_password = false,
+      updated_at = now()
+  `;
+
+  console.log("Bootstrap admin account is ready. Username: admin");
+}
+
 async function main() {
   try {
     await upsertLocations();
@@ -181,6 +212,7 @@ async function main() {
     await replaceTemplates(categoryMap);
     await upsertSettings();
     await upsertPlaybooks(categoryMap);
+    await ensureBootstrapAdmin();
     console.log("Seed complete.");
   } finally {
     await sql.end();

@@ -6,7 +6,7 @@ import { outreachEventSchema } from "@/lib/validations";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 60, windowMs: 60_000, bucket: "outreach-events" });
+  const guard = await enforceApiGuards(request, { max: 60, windowMs: 60_000, bucket: "outreach-events" });
   if (guard) return guard;
 
   try {

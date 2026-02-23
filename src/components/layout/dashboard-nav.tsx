@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, CalendarClock, FolderSearch2, LayoutDashboard, Settings2, Sheet, Target, Users } from "lucide-react";
+import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -16,8 +17,9 @@ const navItems = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings2 },
 ];
 
-export function DashboardNav({ mobile = false }: { mobile?: boolean }) {
+export function DashboardNav({ mobile = false, role = "ADMIN" }: { mobile?: boolean; role?: UserRole }) {
   const pathname = usePathname();
+  const items = role === "AGENT" ? navItems.filter((item) => item.href === "/dashboard/prospecting") : navItems;
 
   function isActive(href: string): boolean {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -26,7 +28,7 @@ export function DashboardNav({ mobile = false }: { mobile?: boolean }) {
 
   return (
     <nav className={cn("space-y-1", mobile ? "" : "")}>
-      {navItems.map((item) => {
+      {items.map((item) => {
         const active = isActive(item.href);
         const Icon = item.icon;
         return (

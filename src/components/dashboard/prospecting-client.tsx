@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -89,6 +89,8 @@ export function ProspectingClient({
   savedConfigs,
   recommendations,
   messageRecommendations,
+  agentMode = false,
+  lockedCategoryId = null,
 }: {
   categories: Category[];
   locations: Location[];
@@ -96,11 +98,16 @@ export function ProspectingClient({
   savedConfigs: ProspectingConfig[];
   recommendations: Array<{ location: string; category: string; replyRate: number; winRate: number }>;
   messageRecommendations: StrategyRecommendation[];
+  agentMode?: boolean;
+  lockedCategoryId?: string | null;
 }) {
   const PAGE_SIZE = 15;
+  const defaultCategoryId =
+    (lockedCategoryId && categories.some((item) => item.id === lockedCategoryId) ? lockedCategoryId : categories[0]?.id) ?? "";
+  const defaultLocationId = locations[0]?.id ?? "";
   const [name, setName] = useState("");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
-  const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(defaultCategoryId);
+  const [locationId, setLocationId] = useState(defaultLocationId);
   const [keywordsText, setKeywordsText] = useState("");
   const [maxResults, setMaxResults] = useState(120);
   const [currentPage, setCurrentPage] = useState(1);
@@ -110,7 +117,7 @@ export function ProspectingClient({
   const [batchTone, setBatchTone] = useState<MessageTone>("Soft");
   const [batchAngle, setBatchAngle] = useState<MessageAngle>(categories[0]?.default_angle ?? "booking");
   const [minFitScore, setMinFitScore] = useState(45);
-  const [importAndSave, setImportAndSave] = useState(true);
+  const [importAndSave, setImportAndSave] = useState(!agentMode);
   const [loading, setLoading] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -125,6 +132,8 @@ export function ProspectingClient({
   const enrichInFlightRef = useRef(new Set<number>());
 
   const selectedCategory = useMemo(() => categories.find((item) => item.id === categoryId) ?? null, [categories, categoryId]);
+  const noAgentCategoryAssigned = agentMode && categories.length === 0;
+  const canRunProspecting = !noAgentCategoryAssigned && Boolean(categoryId) && Boolean(locationId);
   const bestStrategy = useMemo(() => {
     const categoryName = selectedCategory?.name;
     if (!categoryName) return null;
@@ -179,6 +188,14 @@ export function ProspectingClient({
     setKeywordsText(pack.keywords.join(", "));
   }
 
+  useEffect(() => {
+    if (!categoryId) return;
+    if (keywordsText.trim().length > 0) return;
+    const pack = keywordPacks.find((item) => item.category_id === categoryId);
+    if (!pack) return;
+    setKeywordsText(pack.keywords.join(", "));
+  }, [categoryId, keywordPacks, keywordsText]);
+
   function compactUrlLabel(url: string): string {
     try {
       const parsed = new URL(url);
@@ -199,7 +216,8 @@ export function ProspectingClient({
   }
 
   async function runSearch(importLeads = false) {
-    if (!categoryId || !locationId) return;
+    if (!canRunProspecting) return;
+    const shouldImport = agentMode ? false : importLeads;
     enrichRunRef.current += 1;
     const runId = enrichRunRef.current;
     enrichInFlightRef.current.clear();
@@ -223,7 +241,7 @@ export function ProspectingClient({
           category_id: categoryId,
           location_id: locationId,
           keywords: currentKeywords.length ? currentKeywords : ["business"],
-          import_leads: importLeads,
+          import_leads: shouldImport,
           max_results: maxResults,
         }),
         timeoutMs: 45_000,
@@ -232,10 +250,10 @@ export function ProspectingClient({
       });
       const previewRows = payload.results ?? [];
       setResults(previewRows);
-      if (!importLeads) {
+      if (!shouldImport) {
         void enrichPreviewContacts(previewRows, runId, 1);
       }
-      if (importLeads) {
+      if (shouldImport) {
         setMessage(`Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`);
       }
     } catch (error) {
@@ -454,7 +472,7 @@ export function ProspectingClient({
 
   async function generateForSelected() {
     setBatchResults([]);
-    await runBatchGeneration(selectedRows, importAndSave);
+    await runBatchGeneration(selectedRows, agentMode ? false : importAndSave);
   }
 
   async function generateForRow(row: PlacePreview) {
@@ -492,14 +510,24 @@ export function ProspectingClient({
       <Card>
         <CardHeader>
           <CardTitle>Prospecting Pack</CardTitle>
-          <CardDescription>Find prospects from public listings only, preview first, then import.</CardDescription>
+          <CardDescription>
+            Find prospects from public listings only, preview first, then import.
+            {agentMode ? " Agent accounts are preview-and-draft only." : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {noAgentCategoryAssigned ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+              Your account does not have an assigned category yet. Ask an admin to assign one in Settings.
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-2">
               <Label>Category</Label>
               <Select
                 value={categoryId}
+                disabled={agentMode || noAgentCategoryAssigned}
                 onChange={(event) => {
                   const value = event.target.value;
                   setCategoryId(value);
@@ -516,7 +544,7 @@ export function ProspectingClient({
             </div>
             <div className="space-y-2">
               <Label>Location</Label>
-              <Select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
+              <Select value={locationId} disabled={noAgentCategoryAssigned} onChange={(event) => setLocationId(event.target.value)}>
                 {locations.map((location) => (
                   <option key={location.id} value={location.id}>
                     {location.name}
@@ -528,6 +556,7 @@ export function ProspectingClient({
               <Label>Keywords (comma-separated)</Label>
               <Input
                 value={keywordsText}
+                disabled={noAgentCategoryAssigned}
                 onChange={(event) => setKeywordsText(event.target.value)}
                 placeholder="dental clinic, dentist, oral care"
               />
@@ -540,6 +569,7 @@ export function ProspectingClient({
                 max={300}
                 step={15}
                 value={maxResults}
+                disabled={noAgentCategoryAssigned}
                 onChange={(event) => {
                   const parsed = Number.parseInt(event.target.value, 10);
                   if (Number.isNaN(parsed)) {
@@ -553,20 +583,24 @@ export function ProspectingClient({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => runSearch(false)} disabled={loading}>
+            <Button onClick={() => runSearch(false)} disabled={loading || !canRunProspecting}>
               {loading ? "Searching..." : "Preview Results"}
             </Button>
-            <Button variant="secondary" onClick={() => runSearch(true)} disabled={loading}>
-              Import Previewed Leads
-            </Button>
+            {!agentMode ? (
+              <Button variant="secondary" onClick={() => runSearch(true)} disabled={loading || !canRunProspecting}>
+                Import Previewed Leads
+              </Button>
+            ) : null}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Config name (e.g., Tacloban Dental Hotlist)" />
-            <Button variant="outline" onClick={saveConfig} disabled={saving}>
-              {saving ? "Saving..." : "Save Config"}
-            </Button>
-          </div>
+          {!agentMode ? (
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Config name (e.g., Tacloban Dental Hotlist)" />
+              <Button variant="outline" onClick={saveConfig} disabled={saving}>
+                {saving ? "Saving..." : "Save Config"}
+              </Button>
+            </div>
+          ) : null}
           {message ? <p className="text-sm text-slate-700 dark:text-slate-200">{message}</p> : null}
         </CardContent>
       </Card>
@@ -610,7 +644,7 @@ export function ProspectingClient({
           <div className="grid gap-3 md:grid-cols-5">
             <div className="space-y-1">
               <Label>Language</Label>
-              <Select value={batchLanguage} onChange={(event) => setBatchLanguage(event.target.value as MessageLanguage)}>
+              <Select value={batchLanguage} disabled={noAgentCategoryAssigned} onChange={(event) => setBatchLanguage(event.target.value as MessageLanguage)}>
                 <option value="Taglish">Taglish</option>
                 <option value="English">English</option>
                 <option value="Tagalog">Tagalog</option>
@@ -619,7 +653,7 @@ export function ProspectingClient({
             </div>
             <div className="space-y-1">
               <Label>Tone</Label>
-              <Select value={batchTone} onChange={(event) => setBatchTone(event.target.value as MessageTone)}>
+              <Select value={batchTone} disabled={noAgentCategoryAssigned} onChange={(event) => setBatchTone(event.target.value as MessageTone)}>
                 <option value="Soft">Soft</option>
                 <option value="Direct">Direct</option>
                 <option value="Value-Focused">Value-Focused</option>
@@ -627,7 +661,7 @@ export function ProspectingClient({
             </div>
             <div className="space-y-1">
               <Label>Angle</Label>
-              <Select value={batchAngle} onChange={(event) => setBatchAngle(event.target.value as MessageAngle)}>
+              <Select value={batchAngle} disabled={noAgentCategoryAssigned} onChange={(event) => setBatchAngle(event.target.value as MessageAngle)}>
                 <option value="booking">booking</option>
                 <option value="low_volume">low_volume</option>
                 <option value="organization">organization</option>
@@ -640,6 +674,7 @@ export function ProspectingClient({
                 min={0}
                 max={100}
                 value={minFitScore}
+                disabled={noAgentCategoryAssigned}
                 onChange={(event) => {
                   const parsed = Number.parseInt(event.target.value, 10);
                   if (!Number.isFinite(parsed)) return;
@@ -647,13 +682,22 @@ export function ProspectingClient({
                 }}
               />
             </div>
-            <div className="space-y-1">
-              <Label>Import + Save</Label>
-              <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm">
-                <input type="checkbox" checked={importAndSave} onChange={(event) => setImportAndSave(event.target.checked)} />
-                Save drafts to leads
-              </label>
-            </div>
+            {!agentMode ? (
+              <div className="space-y-1">
+                <Label>Import + Save</Label>
+                <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm">
+                  <input type="checkbox" checked={importAndSave} onChange={(event) => setImportAndSave(event.target.checked)} />
+                  Save drafts to leads
+                </label>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Label>Import + Save</Label>
+                <div className="flex h-10 items-center rounded-md border border-slate-300 px-3 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                  Disabled for agent accounts
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -668,7 +712,7 @@ export function ProspectingClient({
             <Button variant="outline" onClick={clearSelection} disabled={selectedGateStats.selected === 0}>
               Clear Selection
             </Button>
-            <Button onClick={generateForSelected} disabled={batchLoading || selectedGateStats.selected === 0}>
+            <Button onClick={generateForSelected} disabled={batchLoading || selectedGateStats.selected === 0 || noAgentCategoryAssigned}>
               {batchLoading ? "Generating..." : `Generate for Selected (${selectedGateStats.selected})`}
             </Button>
           </div>
@@ -793,7 +837,7 @@ export function ProspectingClient({
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => void generateForRow(row)} disabled={batchLoading}>
+                        <Button variant="outline" size="sm" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
                           Generate 1
                         </Button>
                       </TableCell>
@@ -858,35 +902,37 @@ export function ProspectingClient({
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Saved Configurations</CardTitle>
-          <CardDescription>Reusable keyword and location combinations.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {configs.map((config) => (
-            <div key={config.id} className="flex items-start gap-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
-              <button
-                type="button"
-                className="flex-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                onClick={() => {
-                  setName(config.name);
-                  setCategoryId(config.category_id);
-                  setLocationId(config.location_id);
-                  setKeywordsText(config.keywords.join(", "));
-                }}
-              >
-                <p className="font-medium text-slate-900 dark:text-slate-100">{config.name}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-300">{config.keywords.join(", ")}</p>
-              </button>
-              <Button type="button" variant="destructive" size="sm" onClick={() => setPendingConfigDelete(config)}>
-                Delete
-              </Button>
-            </div>
-          ))}
-          {configs.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">No saved configs yet.</p> : null}
-        </CardContent>
-      </Card>
+      {!agentMode ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Saved Configurations</CardTitle>
+            <CardDescription>Reusable keyword and location combinations.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {configs.map((config) => (
+              <div key={config.id} className="flex items-start gap-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                <button
+                  type="button"
+                  className="flex-1 rounded-md px-2 py-1 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    setName(config.name);
+                    setCategoryId(config.category_id);
+                    setLocationId(config.location_id);
+                    setKeywordsText(config.keywords.join(", "));
+                  }}
+                >
+                  <p className="font-medium text-slate-900 dark:text-slate-100">{config.name}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">{config.keywords.join(", ")}</p>
+                </button>
+                <Button type="button" variant="destructive" size="sm" onClick={() => setPendingConfigDelete(config)}>
+                  Delete
+                </Button>
+              </div>
+            ))}
+            {configs.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">No saved configs yet.</p> : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(pendingConfigDelete)}

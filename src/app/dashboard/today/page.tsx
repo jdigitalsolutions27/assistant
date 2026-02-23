@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button";
 import { TodayQueueClient } from "@/components/dashboard/today-queue-client";
 import { getCampaigns, getTodayQueueItems, listFollowUpCandidates } from "@/lib/services/data-service";
 import { generateFollowUpDrafts } from "@/lib/services/maintenance-service";
+import { requireAdminPage } from "@/lib/auth";
 
 export default async function TodayPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdminPage("/dashboard/today");
+
   const params = await searchParams;
   const campaignId = typeof params.campaign === "string" && params.campaign ? params.campaign : undefined;
   const notice = typeof params.notice === "string" ? params.notice : null;

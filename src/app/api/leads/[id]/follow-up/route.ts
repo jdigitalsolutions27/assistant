@@ -13,7 +13,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const guard = enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "generate-follow-up" });
+  const guard = await enforceApiGuards(request, { max: 20, windowMs: 60_000, bucket: "generate-follow-up" });
   if (guard) return guard;
 
   try {
@@ -68,4 +68,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     return jsonError(error, 400);
   }
 }
+
 

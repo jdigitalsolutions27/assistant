@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createLead, getCampaigns, getCategories, getLocations, listLeads } from "@/lib/services/data-service";
+import { requireAdminPage } from "@/lib/auth";
 import { leadUpsertSchema } from "@/lib/validations";
 import { normalizeUrl } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdminPage("/dashboard/leads");
+
   const params = await searchParams;
   const pageParam = typeof params.page === "string" ? Number.parseInt(params.page, 10) : 1;
   const notice = typeof params.notice === "string" ? params.notice : null;

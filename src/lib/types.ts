@@ -32,6 +32,8 @@ export const MESSAGE_ANGLES = ["booking", "low_volume", "organization"] as const
 export type MessageAngle = (typeof MESSAGE_ANGLES)[number];
 export const CAMPAIGN_STATUSES = ["ACTIVE", "PAUSED", "ARCHIVED"] as const;
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
+export const USER_ROLES = ["ADMIN", "AGENT"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
 
 export interface Category {
   id: string;
@@ -151,4 +153,16 @@ export interface DashboardKpis {
   won: number;
   replyRate: number;
   winRate: number;
+}
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  display_name: string;
+  role: UserRole;
+  assigned_category_id: string | null;
+  is_active: boolean;
+  must_change_password: boolean;
+  created_at: string;
+  updated_at: string;
 }

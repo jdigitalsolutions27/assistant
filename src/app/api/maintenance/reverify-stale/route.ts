@@ -11,7 +11,7 @@ const payloadSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 8, windowMs: 60_000, bucket: "maintenance-refresh" });
+  const guard = await enforceApiGuards(request, { max: 8, windowMs: 60_000, bucket: "maintenance-refresh" });
   if (guard) return guard;
 
   try {

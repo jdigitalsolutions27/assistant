@@ -6,7 +6,7 @@ import { campaignCreateSchema } from "@/lib/validations";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 30, windowMs: 60_000, bucket: "campaign-list" });
+  const guard = await enforceApiGuards(request, { max: 30, windowMs: 60_000, bucket: "campaign-list" });
   if (guard) return guard;
 
   try {
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const guard = enforceApiGuards(request, { max: 15, windowMs: 60_000, bucket: "campaign-create" });
+  const guard = await enforceApiGuards(request, { max: 15, windowMs: 60_000, bucket: "campaign-create" });
   if (guard) return guard;
 
   try {
