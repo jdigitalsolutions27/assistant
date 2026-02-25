@@ -94,7 +94,7 @@ async function fetchKeywordResults(
 ): Promise<PreviewRow[]> {
   if (!env.GOOGLE_PLACES_API_KEY) return [];
   const results: PreviewRow[] = [];
-  const textQuery = `${keyword} ${locationName}`;
+  const textQuery = `${keyword} in ${locationName}`;
   let pageToken: string | undefined;
   const maxPages = Math.max(1, Math.min(10, Math.ceil(targetCount / 20)));
 
@@ -157,7 +157,11 @@ async function enrichPreviewRow(row: PreviewRow): Promise<PreviewRow> {
 }
 
 function normalizeText(value?: string | null): string {
-  return (value ?? "").toLowerCase();
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function computeRelevanceScore(
@@ -187,6 +191,48 @@ function computeRelevanceScore(
   if (row.website_url) score += 4;
   if (row.phone) score += 3;
   return score;
+}
+
+function buildLocationCandidates(location: { name: string; city: string | null; region: string | null }): string[] {
+  const raw = [location.name, location.city].filter((value): value is string => Boolean(value));
+  const candidates = new Set<string>();
+
+  for (const value of raw) {
+    const normalized = normalizeText(value);
+    if (!normalized) continue;
+    candidates.add(normalized);
+
+    const simplified = normalized
+      .replace(/\b(city|municipality|municipal|province|prov\.)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (simplified && simplified.length >= 3) {
+      candidates.add(simplified);
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function isBroadRegionSelection(location: { name: string; city: string | null }): boolean {
+  if (location.city) return false;
+  const normalized = normalizeText(location.name);
+  return normalized.includes("region");
+}
+
+function matchesSelectedLocation(
+  row: PreviewRow,
+  location: { name: string; city: string | null; region: string | null },
+): boolean {
+  if (isBroadRegionSelection(location)) return true;
+
+  const candidates = buildLocationCandidates(location);
+  if (!candidates.length) return true;
+
+  const haystack = `${normalizeText(row.address)} ${normalizeText(row.business_name)}`;
+  if (!haystack.trim()) return false;
+
+  return candidates.some((candidate) => haystack.includes(candidate));
 }
 
 export async function POST(request: NextRequest) {
@@ -237,7 +283,15 @@ export async function POST(request: NextRequest) {
       .sort((a, b) => b.relevance - a.relevance)
       .slice(0, payload.max_results)
       .map((item) => item.row);
-    const previewMatchKeys = unique.map((item) => buildProspectingMatchKey(item));
+    const strictMatched = unique.filter((row) =>
+      matchesSelectedLocation(row, {
+        name: location.name,
+        city: location.city,
+        region: location.region,
+      }),
+    );
+    const scoped = strictMatched.slice(0, payload.max_results);
+    const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys =
       user.role === "AGENT"
         ? await getUserMarkedProspectingKeys({
@@ -250,14 +304,15 @@ export async function POST(request: NextRequest) {
 
     if (!payload.import_leads) {
       return NextResponse.json({
-        results: unique,
+        results: scoped,
         marked_sent_keys: markedSentKeys,
         imported: 0,
+        filtered_out: Math.max(0, unique.length - scoped.length),
         generated_at: new Date().toISOString(),
       });
     }
 
-    const enriched = await mapWithConcurrency(unique, enrichPreviewRow, 5);
+    const enriched = await mapWithConcurrency(scoped, enrichPreviewRow, 5);
     const insertResult = await bulkCreateLeadsWithStats(
       enriched.map((item) => ({
         business_name: item.business_name,
