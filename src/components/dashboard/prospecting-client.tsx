@@ -50,6 +50,8 @@ type BatchResultItem = {
   variants: Array<{ variant_label: "A" | "B" | "C"; message_text: string }>;
 };
 
+type MobilePreviewFilter = "all" | "passed" | "facebook" | "email";
+
 function normalizePhone(value: string | null): string {
   return (value ?? "").replace(/\D/g, "");
 }
@@ -127,6 +129,7 @@ export function ProspectingClient({
   const [enriching, setEnriching] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 });
   const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
+  const [mobileFilter, setMobileFilter] = useState<MobilePreviewFilter>("all");
   const [message, setMessage] = useState<string | null>(null);
   const enrichRunRef = useRef(0);
   const enrichInFlightRef = useRef(new Set<number>());
@@ -157,6 +160,16 @@ export function ProspectingClient({
     const start = (safeCurrentPage - 1) * PAGE_SIZE;
     return results.slice(start, start + PAGE_SIZE);
   }, [results, safeCurrentPage]);
+
+  const mobileFilteredResults = useMemo(() => {
+    if (mobileFilter === "all") return paginatedResults;
+    if (mobileFilter === "facebook") return paginatedResults.filter((row) => Boolean(row.facebook_url));
+    if (mobileFilter === "email") return paginatedResults.filter((row) => Boolean(row.email));
+    return paginatedResults.filter((row) => {
+      const channels = [Boolean(row.website_url), Boolean(row.facebook_url), normalizePhone(row.phone).length >= 7, Boolean(row.email)].filter(Boolean).length;
+      return channels > 0 && computePreviewFitScore(row) >= minFitScore;
+    });
+  }, [mobileFilter, paginatedResults, minFitScore]);
 
   const selectedRows = useMemo(
     () =>
@@ -225,6 +238,7 @@ export function ProspectingClient({
     setEnriching(false);
     setEnrichProgress({ done: 0, total: 0 });
     setCurrentPage(1);
+    setMobileFilter("all");
     setSelectedKeys(new Set());
     setBatchResults([]);
     setMessage(null);
@@ -515,7 +529,7 @@ export function ProspectingClient({
             {agentMode ? " Agent accounts are preview-and-draft only." : ""}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pb-28 md:pb-4">
           {noAgentCategoryAssigned ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
               Your account does not have an assigned category yet. Ask an admin to assign one in Settings.
@@ -751,7 +765,111 @@ export function ProspectingClient({
             <p className="text-xs text-slate-600 dark:text-slate-300">Tip: Select the best leads then click Generate for Selected.</p>
           </div>
 
-          <div className="overflow-auto">
+          <div className="flex gap-2 overflow-x-auto pb-1 md:hidden">
+            <Button size="sm" variant={mobileFilter === "all" ? "default" : "outline"} onClick={() => setMobileFilter("all")}>
+              All ({paginatedResults.length})
+            </Button>
+            <Button size="sm" variant={mobileFilter === "passed" ? "default" : "outline"} onClick={() => setMobileFilter("passed")}>
+              Passed
+            </Button>
+            <Button size="sm" variant={mobileFilter === "facebook" ? "default" : "outline"} onClick={() => setMobileFilter("facebook")}>
+              With Facebook
+            </Button>
+            <Button size="sm" variant={mobileFilter === "email" ? "default" : "outline"} onClick={() => setMobileFilter("email")}>
+              With Email
+            </Button>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {mobileFilteredResults.map((row, idx) => {
+              const matchedIndex = results.findIndex((item) => item === row);
+              const absoluteIndex = matchedIndex >= 0 ? matchedIndex : (safeCurrentPage - 1) * PAGE_SIZE + idx;
+              const rowKey = row.place_id ?? `${row.business_name ?? "unnamed"}-${absoluteIndex}`;
+              const isSelected = selectedKeys.has(rowKey);
+              const fitScore = computePreviewFitScore(row);
+              const channels = [
+                Boolean(row.website_url),
+                Boolean(row.facebook_url),
+                normalizePhone(row.phone).length >= 7,
+                Boolean(row.email),
+              ].filter(Boolean).length;
+              const fitPassed = channels > 0 && fitScore >= minFitScore;
+              const generated = batchResultMap.get(getPreviewMatchKey(row));
+
+              return (
+                <div
+                  key={row.place_id ?? `${row.business_name}-${idx}`}
+                  className={`rounded-lg border p-3 ${
+                    isSelected
+                      ? "border-blue-500 bg-blue-50/50 dark:border-blue-400 dark:bg-blue-950/20"
+                      : "border-slate-200 bg-white/70 dark:border-slate-700 dark:bg-slate-900/50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <button type="button" className="flex-1 text-left" onClick={() => toggleRowSelection(row, absoluteIndex)}>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.business_name ?? "Unnamed Business"}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Listing #{absoluteIndex + 1}</p>
+                      {generated ? (
+                        <p className={`mt-1 text-xs font-medium ${generated.eligible ? "text-emerald-700" : "text-amber-700"}`}>
+                          {generated.eligible ? "Draft generated" : "Blocked by fit gate"}
+                        </p>
+                      ) : null}
+                    </button>
+                    <div className="text-right">
+                      <p className={`text-lg font-semibold ${fitPassed ? "text-emerald-700" : "text-amber-700"}`}>{fitScore}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-300">{fitPassed ? "Passed" : "Review first"}</p>
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{row.address ?? "-"}</p>
+
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 dark:text-slate-200">
+                    <p>Phone: {row.phone ?? "-"}</p>
+                    <p>Email: {row.email ?? (row.website_url && !row.contact_checked ? "Checking..." : "No email")}</p>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {row.website_url ? (
+                      <a
+                        href={row.website_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-blue-700 dark:border-slate-700 dark:text-sky-300"
+                      >
+                        Website
+                      </a>
+                    ) : null}
+                    {row.facebook_url ? (
+                      <a
+                        href={row.facebook_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-blue-700 dark:border-slate-700 dark:text-sky-300"
+                      >
+                        Facebook
+                      </a>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 flex gap-2">
+                    <Button variant={isSelected ? "secondary" : "outline"} size="sm" className="flex-1" onClick={() => toggleRowSelection(row, absoluteIndex)}>
+                      {isSelected ? "Selected" : "Select"}
+                    </Button>
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
+                      Generate 1
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+            {mobileFilteredResults.length === 0 ? (
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
+                No listings match the selected filter on this page.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="hidden overflow-auto md:block">
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
@@ -847,6 +965,27 @@ export function ProspectingClient({
               </TableBody>
             </Table>
           </div>
+
+          {results.length > 0 ? (
+            <div className="fixed inset-x-3 bottom-3 z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur md:hidden dark:border-slate-700 dark:bg-slate-900/95">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Selected {selectedGateStats.selected} | Passed {selectedGateStats.passed} | Blocked {selectedGateStats.blocked}
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={clearSelection} disabled={selectedGateStats.selected === 0}>
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-[1.4]"
+                  onClick={generateForSelected}
+                  disabled={batchLoading || selectedGateStats.selected === 0 || noAgentCategoryAssigned}
+                >
+                  {batchLoading ? "Generating..." : `Generate Selected (${selectedGateStats.selected})`}
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-slate-600 dark:text-slate-300">
