@@ -6,12 +6,14 @@ import { normalizeUrl } from "@/lib/utils";
 import { googlePlacesSearchSchema } from "@/lib/validations";
 import {
   bulkCreateLeadsWithStats,
+  getUserMarkedProspectingKeys,
   getCategories,
   getLocations,
   insertLeadEnrichment,
   logOutreachEvent,
 } from "@/lib/services/data-service";
 import { enrichWebsiteContactData } from "@/lib/services/contact-enrichment";
+import { buildProspectingMatchKey } from "@/lib/prospecting-match-key";
 
 export const runtime = "nodejs";
 
@@ -235,10 +237,21 @@ export async function POST(request: NextRequest) {
       .sort((a, b) => b.relevance - a.relevance)
       .slice(0, payload.max_results)
       .map((item) => item.row);
+    const previewMatchKeys = unique.map((item) => buildProspectingMatchKey(item));
+    const markedSentKeys =
+      user.role === "AGENT"
+        ? await getUserMarkedProspectingKeys({
+            user_id: user.id,
+            category_id: payload.category_id,
+            location_id: payload.location_id,
+            match_keys: previewMatchKeys,
+          })
+        : [];
 
     if (!payload.import_leads) {
       return NextResponse.json({
         results: unique,
+        marked_sent_keys: markedSentKeys,
         imported: 0,
         generated_at: new Date().toISOString(),
       });
@@ -290,6 +303,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       results: enriched,
+      marked_sent_keys: markedSentKeys,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
       generated_at: new Date().toISOString(),

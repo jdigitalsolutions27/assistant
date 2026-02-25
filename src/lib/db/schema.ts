@@ -199,3 +199,26 @@ export const userSessions = pgTable("user_sessions", {
   expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const agentProspectingActions = pgTable("agent_prospecting_actions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  user_id: uuid("user_id")
+    .notNull()
+    .references(() => userAccounts.id, { onDelete: "cascade" }),
+  action_type: varchar("action_type", { length: 24 }).notNull().default("MARKED_SENT"),
+  category_id: uuid("category_id")
+    .notNull()
+    .references(() => categories.id, { onDelete: "cascade" }),
+  location_id: uuid("location_id")
+    .notNull()
+    .references(() => locations.id, { onDelete: "cascade" }),
+  match_key: varchar("match_key", { length: 255 }).notNull(),
+  business_name: varchar("business_name", { length: 180 }),
+  address: varchar("address", { length: 255 }),
+  website_url: varchar("website_url", { length: 255 }),
+  facebook_url: varchar("facebook_url", { length: 255 }),
+  phone: varchar("phone", { length: 60 }),
+  email: varchar("email", { length: 120 }),
+  metadata_json: jsonb("metadata_json").notNull().default({}),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

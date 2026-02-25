@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requestJson } from "@/lib/client-http";
+import { buildProspectingMatchKey } from "@/lib/prospecting-match-key";
 import type { Category, KeywordPack, Location, MessageAngle, MessageLanguage, MessageTone, ProspectingConfig } from "@/lib/types";
 
 type PlacePreview = {
@@ -131,6 +132,9 @@ export function ProspectingClient({
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 });
   const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
   const [mobileFilter, setMobileFilter] = useState<MobilePreviewFilter>("all");
+  const [markedSentKeys, setMarkedSentKeys] = useState<Set<string>>(new Set());
+  const [hideMarkedSent, setHideMarkedSent] = useState(agentMode);
+  const [markingSentKey, setMarkingSentKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const enrichRunRef = useRef(0);
   const enrichInFlightRef = useRef(new Set<number>());
@@ -153,14 +157,19 @@ export function ProspectingClient({
     [keywordsText],
   );
 
-  const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
+  const visibleResults = useMemo(() => {
+    if (!agentMode || !hideMarkedSent) return results;
+    return results.filter((row) => !markedSentKeys.has(buildProspectingMatchKey(row)));
+  }, [results, agentMode, hideMarkedSent, markedSentKeys]);
+  const hiddenMarkedCount = Math.max(0, results.length - visibleResults.length);
+  const totalPages = Math.max(1, Math.ceil(visibleResults.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const pageStart = results.length === 0 ? 0 : (safeCurrentPage - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(results.length, safeCurrentPage * PAGE_SIZE);
+  const pageStart = visibleResults.length === 0 ? 0 : (safeCurrentPage - 1) * PAGE_SIZE + 1;
+  const pageEnd = Math.min(visibleResults.length, safeCurrentPage * PAGE_SIZE);
   const paginatedResults = useMemo(() => {
     const start = (safeCurrentPage - 1) * PAGE_SIZE;
-    return results.slice(start, start + PAGE_SIZE);
-  }, [results, safeCurrentPage]);
+    return visibleResults.slice(start, start + PAGE_SIZE);
+  }, [visibleResults, safeCurrentPage]);
 
   const mobileFilteredResults = useMemo(() => {
     if (mobileFilter === "all") return paginatedResults;
@@ -173,12 +182,8 @@ export function ProspectingClient({
   }, [mobileFilter, paginatedResults, minFitScore]);
 
   const selectedRows = useMemo(
-    () =>
-      results.filter((row, idx) => {
-        const key = row.place_id ?? `${row.business_name ?? "unnamed"}-${idx}`;
-        return selectedKeys.has(key);
-      }),
-    [results, selectedKeys],
+    () => visibleResults.filter((row) => selectedKeys.has(buildProspectingMatchKey(row))),
+    [visibleResults, selectedKeys],
   );
 
   const selectedGateStats = useMemo(() => {
@@ -195,6 +200,10 @@ export function ProspectingClient({
   }, [selectedRows, minFitScore]);
 
   const batchResultMap = useMemo(() => new Map(batchResults.map((item) => [item.match_key, item])), [batchResults]);
+
+  function getRowSelectionKey(row: PlacePreview): string {
+    return buildProspectingMatchKey(row);
+  }
 
   function loadDefaultKeywords(nextCategoryId: string) {
     const pack = keywordPacks.find((item) => item.category_id === nextCategoryId);
@@ -246,6 +255,7 @@ export function ProspectingClient({
     try {
       const payload = await requestJson<{
         results?: PlacePreview[];
+        marked_sent_keys?: string[];
         imported?: number;
         skipped_duplicates?: number;
         error?: string;
@@ -265,6 +275,7 @@ export function ProspectingClient({
       });
       const previewRows = payload.results ?? [];
       setResults(previewRows);
+      setMarkedSentKeys(new Set(payload.marked_sent_keys ?? []));
       if (!shouldImport) {
         void enrichPreviewContacts(previewRows, runId, 1);
       }
@@ -357,12 +368,12 @@ export function ProspectingClient({
   function goToPage(nextPage: number) {
     const clamped = Math.max(1, Math.min(nextPage, totalPages));
     setCurrentPage(clamped);
-    if (clamped === safeCurrentPage || results.length === 0) return;
+    if (clamped === safeCurrentPage || visibleResults.length === 0) return;
     void enrichPreviewContacts(results, enrichRunRef.current, clamped);
   }
 
-  function toggleRowSelection(row: PlacePreview, absoluteIndex: number) {
-    const key = row.place_id ?? `${row.business_name ?? "unnamed"}-${absoluteIndex}`;
+  function toggleRowSelection(row: PlacePreview) {
+    const key = getRowSelectionKey(row);
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -372,10 +383,7 @@ export function ProspectingClient({
   }
 
   function toggleSelectPage() {
-    const pageKeys = paginatedResults.map((row, idx) => {
-      const absoluteIndex = (safeCurrentPage - 1) * PAGE_SIZE + idx;
-      return row.place_id ?? `${row.business_name ?? "unnamed"}-${absoluteIndex}`;
-    });
+    const pageKeys = paginatedResults.map((row) => getRowSelectionKey(row));
     const allSelected = pageKeys.length > 0 && pageKeys.every((key) => selectedKeys.has(key));
     setSelectedKeys((prev) => {
       const next = new Set(prev);
@@ -389,6 +397,44 @@ export function ProspectingClient({
 
   function clearSelection() {
     setSelectedKeys(new Set());
+  }
+
+  async function markPreviewRowSent(row: PlacePreview) {
+    if (!categoryId || !locationId) return;
+    const key = buildProspectingMatchKey(row);
+    if (markedSentKeys.has(key)) return;
+
+    setMarkingSentKey(key);
+    try {
+      await requestJson<{ ok?: boolean; error?: string; match_key?: string }>("/api/prospecting/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category_id: categoryId,
+          location_id: locationId,
+          business_name: row.business_name,
+          address: row.address,
+          phone: row.phone,
+          website_url: row.website_url,
+          facebook_url: row.facebook_url,
+          email: row.email,
+          place_id: row.place_id,
+          raw_json: row.raw_json,
+        }),
+        timeoutMs: 15_000,
+      });
+      setMarkedSentKeys((prev) => new Set(prev).add(key));
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      setMessage(`Marked as sent: ${row.business_name ?? "listing"}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to mark as sent.");
+    } finally {
+      setMarkingSentKey(null);
+    }
   }
 
   async function saveConfig() {
@@ -580,20 +626,21 @@ export function ProspectingClient({
               <Label>Max Results</Label>
               <Input
                 type="number"
-                min={15}
-                max={300}
-                step={15}
+                min={1}
+                max={1000}
+                step={1}
                 value={maxResults}
                 disabled={noAgentCategoryAssigned}
                 onChange={(event) => {
                   const parsed = Number.parseInt(event.target.value, 10);
                   if (Number.isNaN(parsed)) {
-                    setMaxResults(120);
+                    setMaxResults(1);
                     return;
                   }
-                  setMaxResults(Math.max(15, Math.min(300, parsed)));
+                  setMaxResults(Math.max(1, Math.min(1000, parsed)));
                 }}
               />
+              <p className="text-[11px] text-slate-500 dark:text-slate-300">Any value is allowed up to 1000. Higher values can be slower.</p>
             </div>
           </div>
 
@@ -738,12 +785,13 @@ export function ProspectingClient({
         <CardHeader>
           <CardTitle>Preview Results</CardTitle>
           <CardDescription>
-            {results.length} listings fetched from Google Places public data.
-            {results.length > 0 ? ` Showing ${pageStart}-${pageEnd}.` : ""}
+            {visibleResults.length} listings fetched from Google Places public data.
+            {visibleResults.length > 0 ? ` Showing ${pageStart}-${pageEnd}.` : ""}
+            {hiddenMarkedCount > 0 ? ` ${hiddenMarkedCount} marked-sent listings hidden.` : ""}
             {enriching ? ` Enriching contacts ${enrichProgress.done}/${enrichProgress.total}...` : ""}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pb-[calc(12.5rem+env(safe-area-inset-bottom))] lg:pb-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/40">
               <p className="text-xs text-slate-600 dark:text-slate-300">With Website</p>
@@ -763,6 +811,12 @@ export function ProspectingClient({
             <Button variant="outline" onClick={toggleSelectPage} disabled={paginatedResults.length === 0}>
               Select / Unselect Page
             </Button>
+            {agentMode ? (
+              <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                <input type="checkbox" checked={hideMarkedSent} onChange={(event) => setHideMarkedSent(event.target.checked)} />
+                Hide marked sent
+              </label>
+            ) : null}
             <p className="text-xs text-slate-600 dark:text-slate-300">Tip: Select the best leads then click Generate for Selected.</p>
           </div>
 
@@ -783,10 +837,10 @@ export function ProspectingClient({
 
           <div className="space-y-3 lg:hidden">
             {mobileFilteredResults.map((row, idx) => {
-              const matchedIndex = results.findIndex((item) => item === row);
-              const absoluteIndex = matchedIndex >= 0 ? matchedIndex : (safeCurrentPage - 1) * PAGE_SIZE + idx;
-              const rowKey = row.place_id ?? `${row.business_name ?? "unnamed"}-${absoluteIndex}`;
+              const absoluteIndex = (safeCurrentPage - 1) * PAGE_SIZE + idx;
+              const rowKey = getRowSelectionKey(row);
               const isSelected = selectedKeys.has(rowKey);
+              const isMarkedSent = markedSentKeys.has(rowKey);
               const fitScore = computePreviewFitScore(row);
               const channels = [
                 Boolean(row.website_url),
@@ -807,9 +861,10 @@ export function ProspectingClient({
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <button type="button" className="flex-1 text-left" onClick={() => toggleRowSelection(row, absoluteIndex)}>
+                    <button type="button" className="flex-1 text-left" onClick={() => toggleRowSelection(row)}>
                       <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.business_name ?? "Unnamed Business"}</p>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Listing #{absoluteIndex + 1}</p>
+                      {isMarkedSent ? <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Marked sent by you</p> : null}
                       {generated ? (
                         <p className={`mt-1 text-xs font-medium ${generated.eligible ? "text-emerald-700" : "text-amber-700"}`}>
                           {generated.eligible ? "Draft generated" : "Blocked by fit gate"}
@@ -857,13 +912,24 @@ export function ProspectingClient({
                     ) : null}
                   </div>
 
-                  <div className="mt-3 flex gap-2">
-                    <Button variant={isSelected ? "secondary" : "outline"} size="sm" className="flex-1" onClick={() => toggleRowSelection(row, absoluteIndex)}>
+                  <div className={`mt-3 grid gap-2 ${agentMode ? "grid-cols-3" : "grid-cols-2"}`}>
+                    <Button variant={isSelected ? "secondary" : "outline"} size="sm" className="w-full" onClick={() => toggleRowSelection(row)}>
                       {isSelected ? "Selected" : "Select"}
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
+                    <Button variant="outline" size="sm" className="w-full" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
                       Generate 1
                     </Button>
+                    {agentMode ? (
+                      <Button
+                        variant={isMarkedSent ? "secondary" : "outline"}
+                        size="sm"
+                        className="w-full"
+                        onClick={() => void markPreviewRowSent(row)}
+                        disabled={isMarkedSent || markingSentKey === rowKey}
+                      >
+                        {isMarkedSent ? "Sent" : markingSentKey === rowKey ? "Saving..." : "Mark Sent"}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -891,7 +957,8 @@ export function ProspectingClient({
               <TableBody>
                 {paginatedResults.map((row, idx) => {
                   const absoluteIndex = (safeCurrentPage - 1) * PAGE_SIZE + idx;
-                  const rowKey = row.place_id ?? `${row.business_name ?? "unnamed"}-${absoluteIndex}`;
+                  const rowKey = getRowSelectionKey(row);
+                  const isMarkedSent = markedSentKeys.has(rowKey);
                   const fitScore = computePreviewFitScore(row);
                   const channels = [
                     Boolean(row.website_url),
@@ -908,11 +975,12 @@ export function ProspectingClient({
                       className="border-slate-200/90 dark:border-slate-700/80 odd:bg-white even:bg-slate-50/50 dark:odd:bg-slate-900/30 dark:even:bg-slate-800/40"
                     >
                       <TableCell>
-                        <input type="checkbox" checked={selectedKeys.has(rowKey)} onChange={() => toggleRowSelection(row, absoluteIndex)} />
+                        <input type="checkbox" checked={selectedKeys.has(rowKey)} onChange={() => toggleRowSelection(row)} />
                       </TableCell>
                       <TableCell className="min-w-[210px]">
                         <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.business_name ?? "Unnamed Business"}</p>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Listing #{absoluteIndex + 1}</p>
+                        {isMarkedSent ? <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Marked sent by you</p> : null}
                         <div className="mt-2">
                           <ContactReadinessBadges
                             compact
@@ -982,9 +1050,21 @@ export function ProspectingClient({
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
-                          Generate 1
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
+                            Generate 1
+                          </Button>
+                          {agentMode ? (
+                            <Button
+                              variant={isMarkedSent ? "secondary" : "outline"}
+                              size="sm"
+                              onClick={() => void markPreviewRowSent(row)}
+                              disabled={isMarkedSent || markingSentKey === rowKey}
+                            >
+                              {isMarkedSent ? "Sent" : markingSentKey === rowKey ? "Saving..." : "Mark Sent"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -993,8 +1073,24 @@ export function ProspectingClient({
             </Table>
           </div>
 
-          {results.length > 0 ? (
-            <div className="fixed inset-x-3 bottom-3 z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
+          {visibleResults.length > 0 ? (
+            <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+6.8rem)] z-30 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-600 dark:text-slate-300">Page {safeCurrentPage} of {totalPages}</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => goToPage(safeCurrentPage - 1)} disabled={safeCurrentPage <= 1 || loading}>
+                    Prev
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => goToPage(safeCurrentPage + 1)} disabled={safeCurrentPage >= totalPages || loading}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {visibleResults.length > 0 ? (
+            <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Selected {selectedGateStats.selected} | Passed {selectedGateStats.passed} | Blocked {selectedGateStats.blocked}
               </p>
@@ -1014,7 +1110,7 @@ export function ProspectingClient({
             </div>
           ) : null}
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 hidden items-center justify-between lg:flex">
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Page {safeCurrentPage} of {totalPages}
             </p>

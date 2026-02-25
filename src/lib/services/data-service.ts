@@ -4,6 +4,7 @@ import { and, asc, desc, eq, ilike, inArray, max, or } from "drizzle-orm";
 import { sanitizeOutreachText } from "@/lib/compliance";
 import { getDb } from "@/lib/db/client";
 import {
+  agentProspectingActions,
   appSettings,
   campaigns,
   campaignPlaybooks,
@@ -33,6 +34,7 @@ import type {
   MessageLanguage,
   MessageTemplate,
   MessageTone,
+  AgentProspectingSentAction,
   OutreachEventType,
   OutreachMessage,
   ProspectingConfig,
@@ -466,6 +468,105 @@ export async function saveProspectingConfig(payload: Omit<ProspectingConfig, "id
 
 export async function deleteProspectingConfig(configId: string): Promise<void> {
   await getDb().delete(prospectingConfigs).where(eq(prospectingConfigs.id, configId));
+}
+
+export async function markProspectingSentAction(payload: {
+  user_id: string;
+  category_id: string;
+  location_id: string;
+  match_key: string;
+  business_name?: string | null;
+  address?: string | null;
+  website_url?: string | null;
+  facebook_url?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  metadata_json?: Record<string, unknown>;
+}): Promise<void> {
+  await getDb()
+    .insert(agentProspectingActions)
+    .values({
+      user_id: payload.user_id,
+      action_type: "MARKED_SENT",
+      category_id: payload.category_id,
+      location_id: payload.location_id,
+      match_key: payload.match_key,
+      business_name: payload.business_name ?? null,
+      address: payload.address ?? null,
+      website_url: payload.website_url ?? null,
+      facebook_url: payload.facebook_url ?? null,
+      phone: payload.phone ?? null,
+      email: payload.email ?? null,
+      metadata_json: payload.metadata_json ?? {},
+    })
+    .onConflictDoNothing();
+}
+
+export async function getUserMarkedProspectingKeys(params: {
+  user_id: string;
+  category_id: string;
+  location_id: string;
+  match_keys: string[];
+}): Promise<string[]> {
+  if (!params.match_keys.length) return [];
+  const keys = Array.from(new Set(params.match_keys)).filter(Boolean).slice(0, 1500);
+  if (!keys.length) return [];
+
+  const rows = await getDb()
+    .select({ match_key: agentProspectingActions.match_key })
+    .from(agentProspectingActions)
+    .where(
+      and(
+        eq(agentProspectingActions.user_id, params.user_id),
+        eq(agentProspectingActions.action_type, "MARKED_SENT"),
+        eq(agentProspectingActions.category_id, params.category_id),
+        eq(agentProspectingActions.location_id, params.location_id),
+        inArray(agentProspectingActions.match_key, keys),
+      ),
+    );
+
+  return rows.map((row) => row.match_key);
+}
+
+export async function getRecentProspectingSentActions(limit = 20): Promise<AgentProspectingSentAction[]> {
+  const safeLimit = Math.max(1, Math.min(200, limit));
+  const rows = await getDb()
+    .select({
+      id: agentProspectingActions.id,
+      user_id: agentProspectingActions.user_id,
+      user_display_name: userAccounts.display_name,
+      category_id: agentProspectingActions.category_id,
+      location_id: agentProspectingActions.location_id,
+      match_key: agentProspectingActions.match_key,
+      business_name: agentProspectingActions.business_name,
+      address: agentProspectingActions.address,
+      website_url: agentProspectingActions.website_url,
+      facebook_url: agentProspectingActions.facebook_url,
+      phone: agentProspectingActions.phone,
+      email: agentProspectingActions.email,
+      created_at: agentProspectingActions.created_at,
+    })
+    .from(agentProspectingActions)
+    .innerJoin(userAccounts, eq(agentProspectingActions.user_id, userAccounts.id))
+    .where(eq(agentProspectingActions.action_type, "MARKED_SENT"))
+    .orderBy(desc(agentProspectingActions.created_at))
+    .limit(safeLimit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    user_display_name: row.user_display_name,
+    category_id: row.category_id,
+    location_id: row.location_id,
+    match_key: row.match_key,
+    business_name: row.business_name,
+    address: row.address,
+    website_url: row.website_url,
+    facebook_url: row.facebook_url,
+    phone: row.phone,
+    email: row.email,
+    created_at: toIso(row.created_at)!,
+  }));
 }
 
 function buildLeadWhere(filters?: {

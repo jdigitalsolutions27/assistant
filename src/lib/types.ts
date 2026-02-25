@@ -166,3 +166,19 @@ export interface UserAccount {
   created_at: string;
   updated_at: string;
 }
+
+export interface AgentProspectingSentAction {
+  id: string;
+  user_id: string;
+  user_display_name: string;
+  category_id: string;
+  location_id: string;
+  match_key: string;
+  business_name: string | null;
+  address: string | null;
+  website_url: string | null;
+  facebook_url: string | null;
+  phone: string | null;
+  email: string | null;
+  created_at: string;
+}

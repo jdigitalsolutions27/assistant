@@ -47,7 +47,7 @@ export const googlePlacesSearchSchema = z.object({
   location_id: z.string().uuid(),
   keywords: z.array(z.string().trim().min(2)).min(1).max(20),
   import_leads: z.boolean().default(false),
-  max_results: z.number().int().min(15).max(300).default(120),
+  max_results: z.number().int().min(1).max(1000).default(120),
 });
 
 export const aiScoreSchema = z.object({
@@ -232,4 +232,17 @@ export const userPasswordResetSchema = z.object({
 
 export const userDeleteSchema = z.object({
   user_id: z.string().uuid(),
+});
+
+export const prospectingMarkSentSchema = z.object({
+  category_id: z.string().uuid(),
+  location_id: z.string().uuid(),
+  place_id: z.string().trim().max(120).nullable().optional(),
+  business_name: z.string().trim().max(180).nullable().optional(),
+  address: z.string().trim().max(255).nullable().optional(),
+  phone: z.string().trim().max(60).nullable().optional(),
+  website_url: z.string().url().nullable().optional(),
+  facebook_url: z.string().url().nullable().optional(),
+  email: z.string().email().nullable().optional(),
+  raw_json: z.record(z.string(), z.unknown()).optional(),
 });

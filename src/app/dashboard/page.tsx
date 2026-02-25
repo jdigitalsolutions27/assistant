@@ -7,6 +7,7 @@ import {
   getCampaigns,
   getDashboardKpis,
   getPriorityLeads,
+  getRecentProspectingSentActions,
   getRecommendedMessageStrategiesByCategory,
   listFollowUpCandidates,
 } from "@/lib/services/data-service";
@@ -15,13 +16,14 @@ import { toPercent } from "@/lib/utils";
 export default async function DashboardPage() {
   await requireAdminPage("/dashboard");
 
-  const [kpis, breakdowns, campaigns, priority, followUpDue, strategyRecommendations] = await Promise.all([
+  const [kpis, breakdowns, campaigns, priority, followUpDue, strategyRecommendations, recentAgentMarks] = await Promise.all([
     getDashboardKpis(),
     getBreakdowns(),
     getCampaigns({ status: "ACTIVE" }),
     getPriorityLeads({ limit: 5 }),
     listFollowUpCandidates({ daysSinceSent: 3, limit: 120 }),
     getRecommendedMessageStrategiesByCategory(),
+    getRecentProspectingSentActions(12),
   ]);
   const topCategories = Object.entries(breakdowns.byCategory)
     .sort((a, b) => b[1] - a[1])
@@ -125,6 +127,28 @@ export default async function DashboardPage() {
           )}
         </CardContent>
         </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Agent Marked Sent</CardTitle>
+          <CardDescription>Preview listings that agents already messaged manually, with user attribution.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {recentAgentMarks.length === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">No agent marked-sent activity yet.</p>
+          ) : (
+            recentAgentMarks.map((item) => (
+              <div key={item.id} className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.business_name ?? "Unnamed business"}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Marked by {item.user_display_name} on {new Date(item.created_at).toLocaleString()}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-300">{item.address ?? "-"}</p>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
