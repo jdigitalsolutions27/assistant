@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ContactReadinessBadges } from "@/components/dashboard/contact-readiness-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,6 +14,9 @@ type QueueItem = {
     business_name: string | null;
     status: "NEW" | "DRAFTED" | "SENT" | "REPLIED" | "QUALIFIED" | "WON" | "LOST";
     facebook_url: string | null;
+    website_url: string | null;
+    email: string | null;
+    phone: string | null;
     quality_tier: "High" | "Medium" | "Low";
     quality_score: number;
     score_total: number | null;
@@ -28,6 +32,8 @@ type QueueItem = {
 
 export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }) {
   const [items, setItems] = useState(initialItems);
+  const [focusMode, setFocusMode] = useState(true);
+  const [focusIndex, setFocusIndex] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"success" | "error" | "info">("info");
   const [draftingLeadId, setDraftingLeadId] = useState<string | null>(null);
@@ -36,6 +42,23 @@ export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }
     () => items.filter((item) => item.lead.status === "NEW" || item.lead.status === "DRAFTED" || item.lead.status === "SENT").length,
     [items],
   );
+  const focusItems = useMemo(() => {
+    const actionable = items.filter((item) => item.lead.status === "NEW" || item.lead.status === "DRAFTED" || item.lead.status === "SENT");
+    return actionable.length > 0 ? actionable : items;
+  }, [items]);
+  const safeFocusIndex = Math.min(focusIndex, Math.max(0, focusItems.length - 1));
+  const focusItem = focusItems[safeFocusIndex] ?? null;
+
+  useEffect(() => {
+    setFocusIndex((previous) => Math.min(previous, Math.max(0, focusItems.length - 1)));
+  }, [focusItems.length]);
+
+  function advanceFocus() {
+    setFocusIndex((previous) => {
+      if (focusItems.length === 0) return 0;
+      return Math.min(previous + 1, focusItems.length - 1);
+    });
+  }
 
   async function emitEvent(leadId: string, eventType: string, status?: string, metadata: Record<string, unknown> = {}) {
     await requestJson<{ ok?: boolean; error?: string }>("/api/outreach/events", {
@@ -108,6 +131,9 @@ export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }
       );
       setMessageTone("success");
       setMessage(`${item.lead.business_name ?? "Lead"} marked as ${status}.`);
+      if (focusMode) {
+        advanceFocus();
+      }
     } catch (error) {
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Failed to update status.");
@@ -184,12 +210,35 @@ export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }
       ) : null}
 
       <div className={items.length > 0 ? "space-y-3 md:hidden" : "hidden"}>
-        {items.map((item) => (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-800/40">
+          <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
+            {focusMode && focusItem ? `Focus ${safeFocusIndex + 1} of ${focusItems.length}` : "List Mode"}
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant={focusMode ? "default" : "outline"} onClick={() => setFocusMode(true)}>
+              Focus
+            </Button>
+            <Button size="sm" variant={!focusMode ? "default" : "outline"} onClick={() => setFocusMode(false)}>
+              List
+            </Button>
+          </div>
+        </div>
+
+        {(focusMode ? (focusItem ? [focusItem] : []) : items).map((item) => (
           <div key={item.lead.id} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-semibold text-slate-900 dark:text-slate-100">{item.lead.business_name ?? "Unnamed"}</p>
                 <p className="text-xs text-slate-600 dark:text-slate-300">{item.priority_reason}</p>
+                <div className="mt-2">
+                  <ContactReadinessBadges
+                    compact
+                    facebook_url={item.lead.facebook_url}
+                    website_url={item.lead.website_url}
+                    email={item.lead.email}
+                    phone={item.lead.phone}
+                  />
+                </div>
               </div>
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{item.lead.status}</p>
             </div>
@@ -253,6 +302,11 @@ export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }
               <Button size="sm" variant="outline" onClick={() => void markStatus(item, "REPLIED")}>
                 REPLIED
               </Button>
+              {focusMode ? (
+                <Button size="sm" variant="default" onClick={advanceFocus}>
+                  Next Best
+                </Button>
+              ) : null}
               <Link href={`/dashboard/leads/${item.lead.id}`} prefetch className="inline-flex items-center text-xs text-blue-700 hover:underline dark:text-sky-300">
                 Open Lead
               </Link>
@@ -266,6 +320,7 @@ export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }
           <TableHeader>
             <TableRow>
               <TableHead>Business</TableHead>
+              <TableHead>Readiness</TableHead>
               <TableHead>Campaign</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Priority</TableHead>
@@ -283,6 +338,15 @@ export function TodayQueueClient({ initialItems }: { initialItems: QueueItem[] }
                     <p className="font-semibold text-slate-900 dark:text-slate-100">{item.lead.business_name ?? "Unnamed"}</p>
                     <p className="text-xs text-slate-600 dark:text-slate-300">{item.priority_reason}</p>
                   </div>
+                </TableCell>
+                <TableCell>
+                  <ContactReadinessBadges
+                    compact
+                    facebook_url={item.lead.facebook_url}
+                    website_url={item.lead.website_url}
+                    email={item.lead.email}
+                    phone={item.lead.phone}
+                  />
                 </TableCell>
                 <TableCell>{item.campaign_name ?? "-"}</TableCell>
                 <TableCell>{item.lead.status}</TableCell>

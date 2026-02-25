@@ -2,10 +2,10 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createUserSession, getDashboardPathForUser, getSessionUser } from "@/lib/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoginSubmitButton } from "@/components/auth/login-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
-import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { env } from "@/lib/env";
 import { hashPassword, verifyPassword } from "@/lib/password";
@@ -106,9 +106,7 @@ export default async function LoginPage({
                 Invalid username or password.
               </p>
             ) : null}
-            <Button type="submit" className="w-full">
-              Sign In
-            </Button>
+            <LoginSubmitButton />
           </form>
         </CardContent>
       </Card>

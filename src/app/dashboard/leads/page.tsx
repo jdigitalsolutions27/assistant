@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { ContactReadinessBadges } from "@/components/dashboard/contact-readiness-badges";
 import { CsvImportCard } from "@/components/dashboard/csv-import-card";
 import { DuplicateCheckCard } from "@/components/dashboard/duplicate-check-card";
 import { MessageTools } from "@/components/dashboard/message-tools";
+import { MobileLeadFilterPresets } from "@/components/dashboard/mobile-lead-filter-presets";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -141,6 +143,7 @@ export default async function LeadsPage({
           <CardTitle>Filter Leads</CardTitle>
         </CardHeader>
         <CardContent>
+          <MobileLeadFilterPresets />
           <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
             <input type="hidden" name="page" value="1" />
             <Input name="query" defaultValue={typeof params.query === "string" ? params.query : ""} placeholder="Business name..." />
@@ -310,6 +313,15 @@ export default async function LeadsPage({
                   <p>Campaign: {lead.campaign_id ? campaignMap.get(lead.campaign_id) ?? "-" : "-"}</p>
                   <p>Score: {lead.score_total ?? "-"}</p>
                 </div>
+                <div className="mt-2">
+                  <ContactReadinessBadges
+                    compact
+                    facebook_url={lead.facebook_url}
+                    website_url={lead.website_url}
+                    email={lead.email}
+                    phone={lead.phone}
+                  />
+                </div>
                 <div className="mt-3 flex items-center justify-between">
                   <Badge
                     className={
@@ -352,6 +364,15 @@ export default async function LeadsPage({
                       <div>
                         <p className="font-medium text-slate-900 dark:text-slate-100">{lead.business_name ?? "Unnamed"}</p>
                         <p className="text-xs text-slate-600 dark:text-slate-300">{lead.address ?? "-"}</p>
+                        <div className="mt-2">
+                          <ContactReadinessBadges
+                            compact
+                            facebook_url={lead.facebook_url}
+                            website_url={lead.website_url}
+                            email={lead.email}
+                            phone={lead.phone}
+                          />
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{lead.category_id ? categoryMap.get(lead.category_id) ?? "-" : "-"}</TableCell>

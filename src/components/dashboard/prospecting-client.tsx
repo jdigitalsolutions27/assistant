@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ContactReadinessBadges } from "@/components/dashboard/contact-readiness-badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -529,7 +530,7 @@ export function ProspectingClient({
             {agentMode ? " Agent accounts are preview-and-draft only." : ""}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 pb-28 md:pb-4">
+        <CardContent className="space-y-4 pb-28 lg:pb-4">
           {noAgentCategoryAssigned ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
               Your account does not have an assigned category yet. Ask an admin to assign one in Settings.
@@ -765,7 +766,7 @@ export function ProspectingClient({
             <p className="text-xs text-slate-600 dark:text-slate-300">Tip: Select the best leads then click Generate for Selected.</p>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 md:hidden">
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
             <Button size="sm" variant={mobileFilter === "all" ? "default" : "outline"} onClick={() => setMobileFilter("all")}>
               All ({paginatedResults.length})
             </Button>
@@ -780,7 +781,7 @@ export function ProspectingClient({
             </Button>
           </div>
 
-          <div className="space-y-3 md:hidden">
+          <div className="space-y-3 lg:hidden">
             {mobileFilteredResults.map((row, idx) => {
               const matchedIndex = results.findIndex((item) => item === row);
               const absoluteIndex = matchedIndex >= 0 ? matchedIndex : (safeCurrentPage - 1) * PAGE_SIZE + idx;
@@ -828,15 +829,25 @@ export function ProspectingClient({
                     <p>Email: {row.email ?? (row.website_url && !row.contact_checked ? "Checking..." : "No email")}</p>
                   </div>
 
+                  <div className="mt-2">
+                    <ContactReadinessBadges
+                      compact
+                      facebook_url={row.facebook_url}
+                      website_url={row.website_url}
+                      email={row.email}
+                      phone={row.phone}
+                    />
+                  </div>
+
                   <div className="mt-2 flex flex-wrap gap-2">
                     {row.website_url ? (
                       <a
                         href={row.website_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-blue-700 dark:border-slate-700 dark:text-sky-300"
+                        className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                       >
-                        Website
+                        Website available
                       </a>
                     ) : null}
                     {row.facebook_url ? (
@@ -844,9 +855,9 @@ export function ProspectingClient({
                         href={row.facebook_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-blue-700 dark:border-slate-700 dark:text-sky-300"
+                        className="inline-flex items-center rounded-md border border-sky-300 bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-800 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300"
                       >
-                        Facebook
+                        Facebook available
                       </a>
                     ) : null}
                   </div>
@@ -869,7 +880,7 @@ export function ProspectingClient({
             ) : null}
           </div>
 
-          <div className="hidden overflow-auto md:block">
+          <div className="hidden overflow-auto lg:block">
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
@@ -907,6 +918,27 @@ export function ProspectingClient({
                       <TableCell className="min-w-[210px]">
                         <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.business_name ?? "Unnamed Business"}</p>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Listing #{absoluteIndex + 1}</p>
+                        <div className="mt-2">
+                          <ContactReadinessBadges
+                            compact
+                            facebook_url={row.facebook_url}
+                            website_url={row.website_url}
+                            email={row.email}
+                            phone={row.phone}
+                          />
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {row.website_url ? (
+                            <span className="inline-flex rounded-md border border-emerald-300 bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                              Website
+                            </span>
+                          ) : null}
+                          {row.facebook_url ? (
+                            <span className="inline-flex rounded-md border border-sky-300 bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300">
+                              Facebook
+                            </span>
+                          ) : null}
+                        </div>
                         {generated ? (
                           <p className={`mt-1 text-xs font-medium ${generated.eligible ? "text-emerald-700" : "text-amber-700"}`}>
                             {generated.eligible ? "Draft generated" : "Blocked by fit gate"}
@@ -930,7 +962,7 @@ export function ProspectingClient({
                             href={row.website_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="block max-w-[220px] truncate text-sm font-medium text-blue-700 hover:underline dark:text-sky-300"
+                            className="block max-w-[220px] truncate rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-sm font-semibold text-emerald-800 hover:underline dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                             title={row.website_url}
                           >
                             Website: {compactUrlLabel(row.website_url)}
@@ -943,7 +975,7 @@ export function ProspectingClient({
                             href={row.facebook_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="block max-w-[220px] truncate text-sm font-medium text-blue-700 hover:underline dark:text-sky-300"
+                            className="block max-w-[220px] truncate rounded-md border border-sky-300 bg-sky-100 px-2 py-1 text-sm font-semibold text-sky-800 hover:underline dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300"
                             title={row.facebook_url}
                           >
                             Facebook: {compactUrlLabel(row.facebook_url)}
@@ -967,7 +999,7 @@ export function ProspectingClient({
           </div>
 
           {results.length > 0 ? (
-            <div className="fixed inset-x-3 bottom-3 z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur md:hidden dark:border-slate-700 dark:bg-slate-900/95">
+            <div className="fixed inset-x-3 bottom-3 z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Selected {selectedGateStats.selected} | Passed {selectedGateStats.passed} | Blocked {selectedGateStats.blocked}
               </p>

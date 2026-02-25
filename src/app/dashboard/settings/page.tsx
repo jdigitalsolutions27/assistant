@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AddLocationForm } from "@/components/dashboard/add-location-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -12,6 +13,7 @@ import {
   addCategory,
   addLocation,
   createUserAccount,
+  deleteLocation,
   deleteUserAccount,
   getCategories,
   getKeywordPacks,
@@ -28,6 +30,11 @@ import { requireAdminPage } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { generateFollowUpDrafts, refreshStaleLeadContacts, runNightlyMaintenance } from "@/lib/services/maintenance-service";
 import { settingsWeightSchema, userAccessUpdateSchema, userCreateSchema, userDeleteSchema, userPasswordResetSchema } from "@/lib/validations";
+import { z } from "zod";
+
+const locationDeleteSchema = z.object({
+  location_id: z.string().uuid(),
+});
 
 export default async function SettingsPage({
   searchParams,
@@ -59,11 +66,23 @@ export default async function SettingsPage({
 
   async function addLocationAction(formData: FormData) {
     "use server";
+    const name = String(formData.get("name") ?? "").trim();
+    const region = String(formData.get("region") ?? "").trim();
+    const country = String(formData.get("country") ?? "").trim();
+    if (!name) {
+      throw new Error("Target location name is required.");
+    }
+    if (!region) {
+      throw new Error("Region is required.");
+    }
+    if (!country) {
+      throw new Error("Country is required.");
+    }
     await addLocation({
-      name: String(formData.get("name") ?? ""),
-      city: String(formData.get("city") ?? ""),
-      region: String(formData.get("region") ?? ""),
-      country: String(formData.get("country") ?? ""),
+      name,
+      city: String(formData.get("city") ?? "").trim(),
+      region,
+      country,
     });
     revalidatePath("/dashboard/settings");
   }
@@ -195,6 +214,22 @@ export default async function SettingsPage({
     }
   }
 
+  async function deleteLocationAction(formData: FormData) {
+    "use server";
+    try {
+      const parsed = locationDeleteSchema.parse({
+        location_id: String(formData.get("location_id") ?? ""),
+      });
+
+      await deleteLocation(parsed.location_id);
+      revalidatePath("/dashboard/settings");
+      redirect("/dashboard/settings?maintenance=Location%20deleted%20successfully.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete location.";
+      redirect(`/dashboard/settings?maintenance=${encodeURIComponent(message)}`);
+    }
+  }
+
   async function refreshContactsAction(formData: FormData) {
     "use server";
     const daysStale = Number(formData.get("days_stale") ?? 21);
@@ -286,29 +321,10 @@ export default async function SettingsPage({
         <Card>
           <CardHeader>
             <CardTitle>Add Location</CardTitle>
+            <CardDescription>Choose country, region, and city from guided lists to keep targeting accurate.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={addLocationAction} className="space-y-3">
-              <div className="space-y-1">
-                <Label>Name</Label>
-                <Input name="name" placeholder="Tacloban City" required />
-              </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-1">
-                  <Label>City</Label>
-                  <Input name="city" />
-                </div>
-                <div className="space-y-1">
-                  <Label>Region</Label>
-                  <Input name="region" />
-                </div>
-                <div className="space-y-1">
-                  <Label>Country</Label>
-                  <Input name="country" defaultValue="Philippines" />
-                </div>
-              </div>
-              <Button type="submit">Save Location</Button>
-            </form>
+            <AddLocationForm action={addLocationAction} />
           </CardContent>
         </Card>
       </section>
@@ -641,9 +657,27 @@ export default async function SettingsPage({
           </div>
           <div>
             <p className="mb-2 font-semibold text-slate-900">Locations</p>
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {locations.map((location) => (
-                <li key={location.id}>{location.name}</li>
+                <li key={location.id} className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-slate-900 dark:text-slate-100">{location.name}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        {location.city || "No city"}, {location.region || "No region"}, {location.country || "No country"}
+                      </p>
+                    </div>
+                    <ConfirmActionForm
+                      action={deleteLocationAction}
+                      fields={{ location_id: location.id }}
+                      buttonLabel="Delete"
+                      confirmTitle="Delete Location?"
+                      confirmDescription={`This will remove "${location.name}" from your location list. Existing leads will keep working, but location links may be unset.`}
+                      buttonVariant="destructive"
+                      buttonSize="sm"
+                    />
+                  </div>
+                </li>
               ))}
             </ul>
           </div>

@@ -1119,6 +1119,10 @@ export async function addLocation(payload: {
     });
 }
 
+export async function deleteLocation(locationId: string): Promise<void> {
+  await getDb().delete(locations).where(eq(locations.id, locationId));
+}
+
 export async function setKeywordPack(categoryId: string, keywords: string[]): Promise<void> {
   const row = await getDb().select({ id: keywordPacks.id }).from(keywordPacks).where(eq(keywordPacks.category_id, categoryId)).limit(1);
   if (row[0]) {
