@@ -824,19 +824,14 @@ export function ProspectingClient({
 
                   <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{row.address ?? "-"}</p>
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 dark:text-slate-200">
-                    <p>Phone: {row.phone ?? "-"}</p>
-                    <p>Email: {row.email ?? (row.website_url && !row.contact_checked ? "Checking..." : "No email")}</p>
-                  </div>
-
-                  <div className="mt-2">
-                    <ContactReadinessBadges
-                      compact
-                      facebook_url={row.facebook_url}
-                      website_url={row.website_url}
-                      email={row.email}
-                      phone={row.phone}
-                    />
+                  <div className="mt-2 space-y-1 text-xs text-slate-700 dark:text-slate-200">
+                    <p>
+                      <span className="font-medium">Phone:</span> {row.phone ?? "-"}
+                    </p>
+                    <p className="break-words">
+                      <span className="font-medium">Email:</span>{" "}
+                      {row.email ?? (row.website_url && !row.contact_checked ? "Checking..." : "No email")}
+                    </p>
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-2">
