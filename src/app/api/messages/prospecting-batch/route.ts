@@ -8,7 +8,7 @@ import {
   bulkCreateLeadsWithStats,
   createOutreachMessages,
   getCategories,
-  getLocations,
+  getLocationByIdForUser,
   getTemplateFor,
   insertLeadEnrichment,
 } from "@/lib/services/data-service";
@@ -162,9 +162,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: agents cannot import and save leads." }, { status: 403 });
     }
 
-    const [categories, locations] = await Promise.all([getCategories(), getLocations()]);
+    const [categories, location] = await Promise.all([
+      getCategories(),
+      getLocationByIdForUser({
+        locationId: payload.location_id,
+        userId: user.id,
+        role: user.role,
+      }),
+    ]);
     const category = categories.find((item) => item.id === payload.category_id);
-    const location = locations.find((item) => item.id === payload.location_id);
     if (!category || !location) {
       return NextResponse.json({ error: "Invalid category or location." }, { status: 400 });
     }

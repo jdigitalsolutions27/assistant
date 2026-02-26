@@ -48,6 +48,7 @@ export interface Location {
   city: string | null;
   region: string | null;
   country: string | null;
+  owner_user_id?: string | null;
   created_at: string;
 }
 
@@ -180,5 +181,17 @@ export interface AgentProspectingSentAction {
   facebook_url: string | null;
   phone: string | null;
   email: string | null;
+  created_at: string;
+}
+
+export interface UserOwnedLocationMonitor {
+  id: string;
+  name: string;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  owner_user_id: string;
+  owner_username: string;
+  owner_display_name: string;
   created_at: string;
 }

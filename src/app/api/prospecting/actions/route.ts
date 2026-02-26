@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSessionUser } from "@/lib/auth";
 import { enforceApiGuards, ensureCategoryAccess, jsonError } from "@/lib/api-helpers";
-import { markProspectingSentAction } from "@/lib/services/data-service";
+import { getLocationByIdForUser, markProspectingSentAction } from "@/lib/services/data-service";
 import { buildProspectingMatchKey } from "@/lib/prospecting-match-key";
 import { prospectingMarkSentSchema } from "@/lib/validations";
 
@@ -19,6 +19,14 @@ export async function POST(request: NextRequest) {
     const payload = prospectingMarkSentSchema.parse(body);
     const categoryGuard = ensureCategoryAccess(user, payload.category_id);
     if (categoryGuard) return categoryGuard;
+    const location = await getLocationByIdForUser({
+      locationId: payload.location_id,
+      userId: user.id,
+      role: user.role,
+    });
+    if (!location) {
+      return NextResponse.json({ error: "Invalid or unauthorized location." }, { status: 403 });
+    }
 
     const matchKey = buildProspectingMatchKey({
       place_id: payload.place_id,

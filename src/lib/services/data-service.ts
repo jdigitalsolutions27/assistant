@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, ilike, inArray, max, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { sanitizeOutreachText } from "@/lib/compliance";
 import { getDb } from "@/lib/db/client";
 import {
@@ -40,6 +40,7 @@ import type {
   ProspectingConfig,
   ScoreWeights,
   UserAccount,
+  UserOwnedLocationMonitor,
   UserRole,
 } from "@/lib/types";
 
@@ -69,6 +70,7 @@ function mapLocation(row: typeof locations.$inferSelect): Location {
     city: row.city,
     region: row.region,
     country: row.country,
+    owner_user_id: row.owner_user_id ?? null,
     created_at: toIso(row.created_at)!,
   };
 }
@@ -198,8 +200,72 @@ export async function getCategories(): Promise<Category[]> {
 }
 
 export async function getLocations(): Promise<Location[]> {
-  const rows = await getDb().select().from(locations).orderBy(asc(locations.name));
+  const rows = await getDb().select().from(locations).where(isNull(locations.owner_user_id)).orderBy(asc(locations.name));
   return rows.map(mapLocation);
+}
+
+export async function getLocationsForUser(options: { userId: string; role: UserRole }): Promise<Location[]> {
+  if (options.role === "ADMIN") {
+    return getLocations();
+  }
+
+  const rows = await getDb()
+    .select()
+    .from(locations)
+    .where(or(isNull(locations.owner_user_id), eq(locations.owner_user_id, options.userId)))
+    .orderBy(asc(locations.name));
+  return rows.map(mapLocation);
+}
+
+export async function getLocationByIdForUser(options: {
+  locationId: string;
+  userId: string;
+  role: UserRole;
+}): Promise<Location | null> {
+  const rows = await getDb().select().from(locations).where(eq(locations.id, options.locationId)).limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  if (options.role === "ADMIN") {
+    return mapLocation(row);
+  }
+  if (!row.owner_user_id || row.owner_user_id === options.userId) {
+    return mapLocation(row);
+  }
+  return null;
+}
+
+export async function getUserOwnedLocationsForAdmin(): Promise<UserOwnedLocationMonitor[]> {
+  const rows = await getDb()
+    .select({
+      id: locations.id,
+      name: locations.name,
+      city: locations.city,
+      region: locations.region,
+      country: locations.country,
+      owner_user_id: locations.owner_user_id,
+      owner_username: userAccounts.username,
+      owner_display_name: userAccounts.display_name,
+      created_at: locations.created_at,
+    })
+    .from(locations)
+    .innerJoin(userAccounts, eq(locations.owner_user_id, userAccounts.id))
+    .where(sql`${locations.owner_user_id} is not null`)
+    .orderBy(desc(locations.created_at));
+
+  return rows
+    .filter((row) => Boolean(row.owner_user_id))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      city: row.city,
+      region: row.region,
+      country: row.country,
+      owner_user_id: row.owner_user_id!,
+      owner_username: row.owner_username,
+      owner_display_name: row.owner_display_name,
+      created_at: toIso(row.created_at)!,
+    }));
 }
 
 export async function getKeywordPackByCategory(categoryId: string): Promise<KeywordPack | null> {
@@ -1201,27 +1267,52 @@ export async function addLocation(payload: {
   city?: string;
   region?: string;
   country?: string;
+  owner_user_id?: string | null;
 }): Promise<void> {
-  await getDb()
-    .insert(locations)
-    .values({
-      name: payload.name,
-      city: payload.city || null,
-      region: payload.region || null,
-      country: payload.country || "Philippines",
-    })
-    .onConflictDoUpdate({
-      target: locations.name,
-      set: {
+  const name = payload.name.trim();
+  const ownerUserId = payload.owner_user_id ?? null;
+  if (!name) throw new Error("Location name is required.");
+
+  const existing = await getDb()
+    .select({ id: locations.id })
+    .from(locations)
+    .where(
+      and(
+        ownerUserId ? eq(locations.owner_user_id, ownerUserId) : isNull(locations.owner_user_id),
+        sql`lower(${locations.name}) = lower(${name})`,
+      ),
+    )
+    .limit(1);
+
+  if (existing[0]) {
+    await getDb()
+      .update(locations)
+      .set({
         city: payload.city || null,
         region: payload.region || null,
         country: payload.country || "Philippines",
-      },
-    });
+      })
+      .where(eq(locations.id, existing[0].id));
+    return;
+  }
+
+  await getDb().insert(locations).values({
+    name,
+    city: payload.city || null,
+    region: payload.region || null,
+    country: payload.country || "Philippines",
+    owner_user_id: ownerUserId,
+  });
 }
 
 export async function deleteLocation(locationId: string): Promise<void> {
   await getDb().delete(locations).where(eq(locations.id, locationId));
+}
+
+export async function deleteUserLocation(userId: string, locationId: string): Promise<void> {
+  await getDb()
+    .delete(locations)
+    .where(and(eq(locations.id, locationId), eq(locations.owner_user_id, userId)));
 }
 
 export async function setKeywordPack(categoryId: string, keywords: string[]): Promise<void> {

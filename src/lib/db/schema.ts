@@ -47,10 +47,11 @@ export const categories = pgTable("categories", {
 
 export const locations = pgTable("locations", {
   id: uuid("id").defaultRandom().primaryKey(),
-  name: varchar("name", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 120 }).notNull(),
   city: varchar("city", { length: 120 }),
   region: varchar("region", { length: 120 }),
   country: varchar("country", { length: 120 }).default("Philippines"),
+  owner_user_id: uuid("owner_user_id"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

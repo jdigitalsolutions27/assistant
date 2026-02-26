@@ -21,6 +21,7 @@ import {
   mergeDuplicateLeads,
   getUserAccounts,
   getScoreWeights,
+  getUserOwnedLocationsForAdmin,
   setKeywordPack,
   setScoreWeights,
   updateUserAccess,
@@ -45,9 +46,10 @@ export default async function SettingsPage({
   const params = await searchParams;
   const maintenanceMessage = typeof params.maintenance === "string" ? params.maintenance : null;
   const accountMessage = typeof params.account === "string" ? params.account : null;
-  const [categories, locations, keywordPacks, weights, users] = await Promise.all([
+  const [categories, locations, userOwnedLocations, keywordPacks, weights, users] = await Promise.all([
     getCategories(),
     getLocations(),
+    getUserOwnedLocationsForAdmin(),
     getKeywordPacks(),
     getScoreWeights(),
     getUserAccounts(),
@@ -644,9 +646,9 @@ export default async function SettingsPage({
       <Card>
         <CardHeader>
           <CardTitle>Reference Lists</CardTitle>
-          <CardDescription>Available categories and locations currently in use.</CardDescription>
+          <CardDescription>Available categories and locations currently in use (global + user-owned).</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 text-sm text-slate-700">
+        <CardContent className="grid gap-4 md:grid-cols-3 text-sm text-slate-700">
           <div>
             <p className="mb-2 font-semibold text-slate-900">Categories</p>
             <ul className="space-y-1">
@@ -679,6 +681,36 @@ export default async function SettingsPage({
                   </div>
                 </li>
               ))}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-2 font-semibold text-slate-900">User-Owned Locations</p>
+            <ul className="space-y-2">
+              {userOwnedLocations.map((location) => (
+                <li key={location.id} className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-slate-900 dark:text-slate-100">{location.name}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        Owner: {location.owner_display_name} ({location.owner_username})
+                      </p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        {location.city || "No city"}, {location.region || "No region"}, {location.country || "No country"}
+                      </p>
+                    </div>
+                    <ConfirmActionForm
+                      action={deleteLocationAction}
+                      fields={{ location_id: location.id }}
+                      buttonLabel="Delete"
+                      confirmTitle="Delete User Location?"
+                      confirmDescription={`This will remove "${location.name}" from ${location.owner_display_name}'s private list.`}
+                      buttonVariant="destructive"
+                      buttonSize="sm"
+                    />
+                  </div>
+                </li>
+              ))}
+              {userOwnedLocations.length === 0 ? <li className="text-xs text-slate-500 dark:text-slate-300">No user-owned locations yet.</li> : null}
             </ul>
           </div>
         </CardContent>

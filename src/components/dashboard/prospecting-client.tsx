@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AddLocationForm } from "@/components/dashboard/add-location-form";
 import { ContactReadinessBadges } from "@/components/dashboard/contact-readiness-badges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,6 +96,8 @@ export function ProspectingClient({
   messageRecommendations,
   agentMode = false,
   lockedCategoryId = null,
+  currentUserId,
+  addLocationAction,
 }: {
   categories: Category[];
   locations: Location[];
@@ -104,6 +107,8 @@ export function ProspectingClient({
   messageRecommendations: StrategyRecommendation[];
   agentMode?: boolean;
   lockedCategoryId?: string | null;
+  currentUserId: string;
+  addLocationAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const PAGE_SIZE = 15;
   const defaultCategoryId =
@@ -140,6 +145,11 @@ export function ProspectingClient({
   const enrichInFlightRef = useRef(new Set<number>());
 
   const selectedCategory = useMemo(() => categories.find((item) => item.id === categoryId) ?? null, [categories, categoryId]);
+  const personalLocations = useMemo(
+    () => locations.filter((location) => location.owner_user_id && location.owner_user_id === currentUserId),
+    [locations, currentUserId],
+  );
+  const globalLocations = useMemo(() => locations.filter((location) => !location.owner_user_id), [locations]);
   const noAgentCategoryAssigned = agentMode && categories.length === 0;
   const canRunProspecting = !noAgentCategoryAssigned && Boolean(categoryId) && Boolean(locationId);
   const bestStrategy = useMemo(() => {
@@ -577,6 +587,16 @@ export function ProspectingClient({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pb-28 lg:pb-4">
+          {agentMode && addLocationAction ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-800/40">
+              <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">Add My Private Location</p>
+              <p className="mb-3 text-xs text-slate-600 dark:text-slate-300">
+                This location is only visible to you. Admin can monitor it in Settings.
+              </p>
+              <AddLocationForm action={addLocationAction} />
+            </div>
+          ) : null}
+
           {noAgentCategoryAssigned ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
               Your account does not have an assigned category yet. Ask an admin to assign one in Settings.
@@ -606,11 +626,22 @@ export function ProspectingClient({
             <div className="space-y-2">
               <Label>Location</Label>
               <Select value={locationId} disabled={noAgentCategoryAssigned} onChange={(event) => setLocationId(event.target.value)}>
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
+                {personalLocations.length > 0 ? (
+                  <optgroup label="My Locations">
+                    {personalLocations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                <optgroup label="Global Locations">
+                  {globalLocations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </optgroup>
               </Select>
             </div>
             <div className="space-y-2 lg:col-span-2">
