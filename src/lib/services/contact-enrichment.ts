@@ -1,10 +1,12 @@
 import "server-only";
 
+import { evaluateContactVerification, type ContactVerification } from "@/lib/contact-verification";
 import { normalizeUrl } from "@/lib/utils";
 
 type ContactEnrichment = {
   facebook_url: string | null;
   email: string | null;
+  verification: ContactVerification;
   checked_at: string;
 };
 
@@ -164,6 +166,12 @@ export async function enrichWebsiteContactData(websiteUrl: string): Promise<Cont
     return {
       facebook_url: null,
       email: null,
+      verification: evaluateContactVerification({
+        email: null,
+        facebook_url: null,
+        phone: null,
+        website_url: null,
+      }),
       checked_at: new Date().toISOString(),
     };
   }
@@ -199,6 +207,12 @@ export async function enrichWebsiteContactData(websiteUrl: string): Promise<Cont
   const result = {
     facebook_url: facebookUrl,
     email,
+    verification: evaluateContactVerification({
+      email,
+      facebook_url: facebookUrl,
+      phone: null,
+      website_url: normalized,
+    }),
     checked_at: new Date().toISOString(),
   };
   setCached(normalized, result);

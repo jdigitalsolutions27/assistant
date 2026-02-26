@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requestJson } from "@/lib/client-http";
+import type { ContactVerification } from "@/lib/contact-verification";
 import { buildProspectingMatchKey } from "@/lib/prospecting-match-key";
 import type { Category, KeywordPack, Location, MessageAngle, MessageLanguage, MessageTone, ProspectingConfig } from "@/lib/types";
 
@@ -22,6 +23,7 @@ type PlacePreview = {
   facebook_url: string | null;
   email: string | null;
   place_id: string | null;
+  contact_verification: ContactVerification;
   contact_checked: boolean;
   raw_json: Record<string, unknown>;
 };
@@ -322,12 +324,17 @@ export function ProspectingClient({
         cursor += 1;
         const candidate = candidates[current];
         try {
-          const payload = await requestJson<{ facebook_url?: string | null; email?: string | null; error?: string }>(
+          const payload = await requestJson<{ facebook_url?: string | null; email?: string | null; verification?: ContactVerification; error?: string }>(
             "/api/ingestion/contact-enrichment",
             {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ website_url: candidate.row.website_url }),
+            body: JSON.stringify({
+              website_url: candidate.row.website_url,
+              phone: candidate.row.phone,
+              existing_email: candidate.row.email,
+              existing_facebook_url: candidate.row.facebook_url,
+            }),
               timeoutMs: 15_000,
               retries: 1,
               retryOnStatuses: [429, 500, 502, 503, 504],
@@ -341,6 +348,7 @@ export function ProspectingClient({
                       ...item,
                       facebook_url: payload.facebook_url ?? item.facebook_url,
                       email: payload.email ?? item.email,
+                      contact_verification: payload.verification ?? item.contact_verification,
                       contact_checked: true,
                     }
                   : item,
@@ -918,6 +926,9 @@ export function ProspectingClient({
                       <span className="font-medium">Email:</span>{" "}
                       {row.email ?? (row.website_url && !row.contact_checked ? "Checking..." : "No email")}
                     </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                      Contact confidence: {row.contact_verification?.overall_score ?? 0}/100
+                    </p>
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -1049,6 +1060,9 @@ export function ProspectingClient({
                       <TableCell className="min-w-[170px]">
                         <p className="text-sm text-slate-800 dark:text-slate-100">{row.phone ?? "-"}</p>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{row.email ?? (row.website_url && !row.contact_checked ? "Checking email..." : "No email")}</p>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
+                          Contact confidence: {row.contact_verification?.overall_score ?? 0}/100
+                        </p>
                       </TableCell>
                       <TableCell className="min-w-[240px] space-y-1">
                         {row.website_url ? (

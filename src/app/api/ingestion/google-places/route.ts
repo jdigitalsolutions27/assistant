@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSessionUser } from "@/lib/auth";
 import { enforceApiGuards, ensureCategoryAccess, jsonError } from "@/lib/api-helpers";
+import { evaluateContactVerification, type ContactVerification } from "@/lib/contact-verification";
 import { env } from "@/lib/env";
 import { normalizeUrl } from "@/lib/utils";
 import { googlePlacesSearchSchema } from "@/lib/validations";
@@ -37,6 +38,7 @@ type PreviewRow = {
   facebook_url: string | null;
   email: string | null;
   place_id: string | null;
+  contact_verification: ContactVerification;
   contact_checked: boolean;
   raw_json: Record<string, unknown>;
 };
@@ -133,6 +135,12 @@ async function fetchKeywordResults(
         facebook_url: null,
         email: null,
         place_id: place.id ?? null,
+        contact_verification: evaluateContactVerification({
+          email: null,
+          facebook_url: null,
+          phone: place.nationalPhoneNumber ?? null,
+          website_url: website,
+        }),
         contact_checked: !website,
         raw_json: place as unknown as Record<string, unknown>,
       });
@@ -146,12 +154,29 @@ async function fetchKeywordResults(
 }
 
 async function enrichPreviewRow(row: PreviewRow): Promise<PreviewRow> {
-  if (!row.website_url) return { ...row, contact_checked: true };
+  if (!row.website_url) {
+    return {
+      ...row,
+      contact_verification: evaluateContactVerification({
+        email: row.email,
+        facebook_url: row.facebook_url,
+        phone: row.phone,
+        website_url: row.website_url,
+      }),
+      contact_checked: true,
+    };
+  }
   const contact = await enrichWebsiteContactData(row.website_url);
   return {
     ...row,
-    facebook_url: contact.facebook_url,
-    email: contact.email,
+    facebook_url: contact.facebook_url ?? row.facebook_url,
+    email: contact.email ?? row.email,
+    contact_verification: evaluateContactVerification({
+      email: contact.email ?? row.email,
+      facebook_url: contact.facebook_url ?? row.facebook_url,
+      phone: row.phone,
+      website_url: row.website_url,
+    }),
     contact_checked: true,
   };
 }
@@ -214,6 +239,48 @@ function buildLocationCandidates(location: { name: string; city: string | null; 
   return Array.from(candidates);
 }
 
+function hasTokenAsPhrase(haystack: string, token: string): boolean {
+  if (!haystack || !token) return false;
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const pattern = new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, "i");
+  return pattern.test(haystack);
+}
+
+function parseLocationScope(location: { name: string; city: string | null; region: string | null }): {
+  locality: string[];
+  province: string[];
+} {
+  const locality = new Set<string>();
+  const province = new Set<string>();
+  const normalizedName = normalizeText(location.name);
+
+  if (location.city) {
+    locality.add(normalizeText(location.city));
+  }
+
+  if (normalizedName.includes(",")) {
+    const [first, second] = normalizedName.split(",").map((part) => part.trim());
+    if (first) locality.add(first);
+    if (second) province.add(second);
+  } else if (normalizedName) {
+    locality.add(normalizedName);
+  }
+
+  for (const token of Array.from(locality)) {
+    const simplified = token.replace(/\b(city|municipality|municipal)\b/g, " ").replace(/\s+/g, " ").trim();
+    if (simplified && simplified.length >= 3) locality.add(simplified);
+  }
+  for (const token of Array.from(province)) {
+    const simplified = token.replace(/\b(province|prov\.)\b/g, " ").replace(/\s+/g, " ").trim();
+    if (simplified && simplified.length >= 3) province.add(simplified);
+  }
+
+  return {
+    locality: Array.from(locality).filter(Boolean),
+    province: Array.from(province).filter(Boolean),
+  };
+}
+
 function isBroadRegionSelection(location: { name: string; city: string | null }): boolean {
   if (location.city) return false;
   const normalized = normalizeText(location.name);
@@ -226,13 +293,25 @@ function matchesSelectedLocation(
 ): boolean {
   if (isBroadRegionSelection(location)) return true;
 
-  const candidates = buildLocationCandidates(location);
-  if (!candidates.length) return true;
+  const address = normalizeText(row.address);
+  const business = normalizeText(row.business_name);
+  const haystack = `${address} ${business}`.trim();
+  if (!haystack) return false;
 
-  const haystack = `${normalizeText(row.address)} ${normalizeText(row.business_name)}`;
-  if (!haystack.trim()) return false;
+  const scope = parseLocationScope(location);
+  const fallbackCandidates = buildLocationCandidates(location);
+  const localityCandidates = scope.locality.length > 0 ? scope.locality : fallbackCandidates;
+  if (localityCandidates.length === 0) return true;
 
-  return candidates.some((candidate) => haystack.includes(candidate));
+  const localityMatched = localityCandidates.some((candidate) => hasTokenAsPhrase(haystack, candidate));
+  if (!localityMatched) return false;
+
+  if (scope.province.length > 0) {
+    const provinceMatched = scope.province.some((candidate) => hasTokenAsPhrase(address, candidate));
+    if (!provinceMatched) return false;
+  }
+
+  return true;
 }
 
 export async function POST(request: NextRequest) {
