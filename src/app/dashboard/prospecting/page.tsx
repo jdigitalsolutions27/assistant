@@ -45,6 +45,9 @@ export default async function ProspectingPage() {
     if (!name || !region || !country) {
       throw new Error("Location name, region, and country are required.");
     }
+    if (country.toLowerCase() !== "philippines") {
+      throw new Error("Agent locations must be in Philippines.");
+    }
 
     await addLocation({
       name,

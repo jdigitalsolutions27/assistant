@@ -54,6 +54,11 @@ function toIso(value: Date | string | null): string | null {
   return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
+function isPhilippinesCountry(value: string | null | undefined): boolean {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "philippines" || normalized === "ph" || normalized === "philippines (the)";
+}
+
 function mapCategory(row: typeof categories.$inferSelect): Category {
   return {
     id: row.id,
@@ -214,7 +219,9 @@ export async function getLocationsForUser(options: { userId: string; role: UserR
     .from(locations)
     .where(or(isNull(locations.owner_user_id), eq(locations.owner_user_id, options.userId)))
     .orderBy(asc(locations.name));
-  return rows.map(mapLocation);
+  return rows
+    .filter((row) => isPhilippinesCountry(row.country))
+    .map(mapLocation);
 }
 
 export async function getLocationByIdForUser(options: {
@@ -228,6 +235,9 @@ export async function getLocationByIdForUser(options: {
 
   if (options.role === "ADMIN") {
     return mapLocation(row);
+  }
+  if (!isPhilippinesCountry(row.country)) {
+    return null;
   }
   if (!row.owner_user_id || row.owner_user_id === options.userId) {
     return mapLocation(row);
