@@ -89,14 +89,22 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+function buildSearchLocationText(location: { name: string; city: string | null; region: string | null; country: string | null }): string {
+  const tokens = [location.city, location.name, location.region, location.country]
+    .map((value) => (value ?? "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(tokens)).join(", ");
+}
+
 async function fetchKeywordResults(
   keyword: string,
-  locationName: string,
+  location: { name: string; city: string | null; region: string | null; country: string | null },
   targetCount: number,
 ): Promise<PreviewRow[]> {
   if (!env.GOOGLE_PLACES_API_KEY) return [];
   const results: PreviewRow[] = [];
-  const textQuery = `${keyword} in ${locationName}`;
+  const locationText = buildSearchLocationText(location);
+  const textQuery = locationText ? `${keyword} in ${locationText}` : keyword;
   let pageToken: string | undefined;
   const maxPages = Math.max(1, Math.min(10, Math.ceil(targetCount / 20)));
 
@@ -281,6 +289,17 @@ function parseLocationScope(location: { name: string; city: string | null; regio
   };
 }
 
+function parseCountryScope(country: string | null): string[] {
+  const normalized = normalizeText(country);
+  if (!normalized) return [];
+  const items = new Set<string>([normalized]);
+  if (normalized === "philippines") {
+    items.add("philippine");
+    items.add("ph");
+  }
+  return Array.from(items);
+}
+
 function isBroadRegionSelection(location: { name: string; city: string | null }): boolean {
   if (location.city) return false;
   const normalized = normalizeText(location.name);
@@ -289,21 +308,29 @@ function isBroadRegionSelection(location: { name: string; city: string | null })
 
 function matchesSelectedLocation(
   row: PreviewRow,
-  location: { name: string; city: string | null; region: string | null },
+  location: { name: string; city: string | null; region: string | null; country: string | null },
 ): boolean {
-  if (isBroadRegionSelection(location)) return true;
-
   const address = normalizeText(row.address);
-  const business = normalizeText(row.business_name);
-  const haystack = `${address} ${business}`.trim();
-  if (!haystack) return false;
+  if (!address) return false;
+
+  const countryCandidates = parseCountryScope(location.country);
+  if (countryCandidates.length > 0) {
+    const countryMatched = countryCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
+    if (!countryMatched) return false;
+  }
+
+  if (isBroadRegionSelection(location)) {
+    const broadCandidates = buildLocationCandidates(location);
+    if (broadCandidates.length === 0) return true;
+    return broadCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
+  }
 
   const scope = parseLocationScope(location);
   const fallbackCandidates = buildLocationCandidates(location);
   const localityCandidates = scope.locality.length > 0 ? scope.locality : fallbackCandidates;
   if (localityCandidates.length === 0) return true;
 
-  const localityMatched = localityCandidates.some((candidate) => hasTokenAsPhrase(haystack, candidate));
+  const localityMatched = localityCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
   if (!localityMatched) return false;
 
   if (scope.province.length > 0) {
@@ -351,7 +378,17 @@ export async function POST(request: NextRequest) {
     const targetPerKeyword = Math.max(20, Math.ceil(payload.max_results / Math.max(1, payload.keywords.length)));
     const keywordRows = await mapWithConcurrency(
       payload.keywords,
-      async (keyword) => fetchKeywordResults(keyword, location.name, targetPerKeyword),
+      async (keyword) =>
+        fetchKeywordResults(
+          keyword,
+          {
+            name: location.name,
+            city: location.city,
+            region: location.region,
+            country: location.country,
+          },
+          targetPerKeyword,
+        ),
       3,
     );
     const previews = keywordRows.flat();
@@ -373,6 +410,7 @@ export async function POST(request: NextRequest) {
         name: location.name,
         city: location.city,
         region: location.region,
+        country: location.country,
       }),
     );
     const scoped = strictMatched.slice(0, payload.max_results);

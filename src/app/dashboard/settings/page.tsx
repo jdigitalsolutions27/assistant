@@ -323,10 +323,12 @@ export default async function SettingsPage({
         <Card>
           <CardHeader>
             <CardTitle>Add Location</CardTitle>
-            <CardDescription>Choose country, region, and city from guided lists to keep targeting accurate.</CardDescription>
+            <CardDescription>
+              Use Region VIII quick add for local targeting, or switch to International / Manual Add for global locations.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <AddLocationForm action={addLocationAction} />
+            <AddLocationForm action={addLocationAction} allowInternational />
           </CardContent>
         </Card>
       </section>
