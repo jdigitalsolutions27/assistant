@@ -45,13 +45,11 @@ export async function GET(request: NextRequest) {
 
     if (type === "cities") {
       if (!countryCode) return NextResponse.json({ error: "countryCode is required." }, { status: 400 });
-      const source =
-        (regionCode
-        ? City.getCitiesOfState(countryCode, regionCode)
-        : City.getCitiesOfCountry(countryCode)) ?? [];
+      const stateCities = regionCode ? City.getCitiesOfState(countryCode, regionCode) ?? [] : [];
+      const source = stateCities.length > 0 ? stateCities : City.getCitiesOfCountry(countryCode) ?? [];
       const deduped = Array.from(new Set(source.map((item) => item.name)));
       const items = deduped.map((name) => ({ code: name, name }));
-      return NextResponse.json({ items: sortByName(items) });
+      return NextResponse.json({ items: sortByName(items), fallback_scope: regionCode && stateCities.length === 0 ? "country" : null });
     }
 
     return NextResponse.json({ error: "Invalid type. Use countries, regions, or cities." }, { status: 400 });
