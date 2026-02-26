@@ -297,6 +297,16 @@ function parseCountryScope(country: string | null): string[] {
     items.add("philippine");
     items.add("ph");
   }
+  if (normalized === "united states" || normalized === "united states of america") {
+    items.add("usa");
+    items.add("us");
+    items.add("u.s.");
+  }
+  if (normalized === "united kingdom") {
+    items.add("uk");
+    items.add("u.k.");
+    items.add("great britain");
+  }
   return Array.from(items);
 }
 
@@ -313,16 +323,14 @@ function matchesSelectedLocation(
   const address = normalizeText(row.address);
   if (!address) return false;
 
+  if (isBroadRegionSelection(location)) {
+    return true;
+  }
+
   const countryCandidates = parseCountryScope(location.country);
   if (countryCandidates.length > 0) {
     const countryMatched = countryCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
     if (!countryMatched) return false;
-  }
-
-  if (isBroadRegionSelection(location)) {
-    const broadCandidates = buildLocationCandidates(location);
-    if (broadCandidates.length === 0) return true;
-    return broadCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
   }
 
   const scope = parseLocationScope(location);
@@ -336,6 +344,32 @@ function matchesSelectedLocation(
   if (scope.province.length > 0) {
     const provinceMatched = scope.province.some((candidate) => hasTokenAsPhrase(address, candidate));
     if (!provinceMatched) return false;
+  }
+
+  return true;
+}
+
+function matchesSelectedLocationRelaxed(
+  row: PreviewRow,
+  location: { name: string; city: string | null; region: string | null; country: string | null },
+): boolean {
+  if (isBroadRegionSelection(location)) return true;
+
+  const address = normalizeText(row.address);
+  const business = normalizeText(row.business_name);
+  const haystack = `${address} ${business}`.trim();
+  if (!haystack) return false;
+
+  const localityCandidates = buildLocationCandidates(location);
+  if (localityCandidates.length > 0) {
+    const localityMatched = localityCandidates.some((candidate) => hasTokenAsPhrase(haystack, candidate));
+    if (!localityMatched) return false;
+  }
+
+  const countryCandidates = parseCountryScope(location.country);
+  if (countryCandidates.length > 0) {
+    const countryMatched = countryCandidates.some((candidate) => hasTokenAsPhrase(haystack, candidate));
+    if (!countryMatched) return false;
   }
 
   return true;
@@ -393,7 +427,7 @@ export async function POST(request: NextRequest) {
     );
     const previews = keywordRows.flat();
 
-    const unique = Array.from(new Map(previews.map((row) => [row.place_id ?? `${row.business_name}-${row.address}`, row])).values())
+    const ranked = Array.from(new Map(previews.map((row) => [row.place_id ?? `${row.business_name}-${row.address}`, row])).values())
       .map((row) => ({
         row,
         relevance: computeRelevanceScore(row, payload.keywords, {
@@ -403,9 +437,9 @@ export async function POST(request: NextRequest) {
         }),
       }))
       .sort((a, b) => b.relevance - a.relevance)
-      .slice(0, payload.max_results)
       .map((item) => item.row);
-    const strictMatched = unique.filter((row) =>
+
+    const strictMatched = ranked.filter((row) =>
       matchesSelectedLocation(row, {
         name: location.name,
         city: location.city,
@@ -413,7 +447,18 @@ export async function POST(request: NextRequest) {
         country: location.country,
       }),
     );
-    const scoped = strictMatched.slice(0, payload.max_results);
+    const relaxedMatched =
+      strictMatched.length > 0
+        ? strictMatched
+        : ranked.filter((row) =>
+            matchesSelectedLocationRelaxed(row, {
+              name: location.name,
+              city: location.city,
+              region: location.region,
+              country: location.country,
+            }),
+          );
+    const scoped = (relaxedMatched.length > 0 ? relaxedMatched : ranked).slice(0, payload.max_results);
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys =
       user.role === "AGENT"
@@ -430,7 +475,7 @@ export async function POST(request: NextRequest) {
         results: scoped,
         marked_sent_keys: markedSentKeys,
         imported: 0,
-        filtered_out: Math.max(0, unique.length - scoped.length),
+        filtered_out: Math.max(0, ranked.length - scoped.length),
         generated_at: new Date().toISOString(),
       });
     }
