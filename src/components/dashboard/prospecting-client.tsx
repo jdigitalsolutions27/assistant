@@ -223,9 +223,9 @@ export function ProspectingClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [results, setResults] = useState<PlacePreview[]>([]);
   const [offerMode, setOfferMode] = useState<OfferMode>(agentMode ? "all" : "launch");
-  const [requireFacebook, setRequireFacebook] = useState(true);
-  const [facebookConfidenceMin, setFacebookConfidenceMin] = useState<FacebookConfidenceMin>("medium");
-  const [minChannelReadyScore, setMinChannelReadyScore] = useState(agentMode ? 0 : 55);
+  const [requireFacebook, setRequireFacebook] = useState(false);
+  const [facebookConfidenceMin, setFacebookConfidenceMin] = useState<FacebookConfidenceMin>("none");
+  const [minChannelReadyScore, setMinChannelReadyScore] = useState(0);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLanguage, setBatchLanguage] = useState<MessageLanguage>("Taglish");
   const [batchTone, setBatchTone] = useState<MessageTone>("Soft");
@@ -274,6 +274,21 @@ export function ProspectingClient({
     [keywordsText],
   );
 
+  const markedHiddenCount = useMemo(() => {
+    if (!hideMarkedSent) return 0;
+    return results.filter((row) => markedSentKeys.has(buildProspectingMatchKey(row))).length;
+  }, [results, hideMarkedSent, markedSentKeys]);
+
+  const confidenceHiddenCount = useMemo(() => {
+    if (agentMode || facebookConfidenceMin === "none") return 0;
+    return results.filter((row) => !matchesFacebookConfidence(row, facebookConfidenceMin)).length;
+  }, [results, agentMode, facebookConfidenceMin]);
+
+  const channelHiddenCount = useMemo(() => {
+    if (minChannelReadyScore <= 0) return 0;
+    return results.filter((row) => computeChannelReadyScore(row) < minChannelReadyScore).length;
+  }, [results, minChannelReadyScore]);
+
   const visibleResults = useMemo(() => {
     return results.filter((row) => {
       if (hideMarkedSent && markedSentKeys.has(buildProspectingMatchKey(row))) return false;
@@ -282,7 +297,6 @@ export function ProspectingClient({
       return true;
     });
   }, [results, hideMarkedSent, markedSentKeys, minChannelReadyScore, agentMode, facebookConfidenceMin]);
-  const hiddenMarkedCount = Math.max(0, results.length - visibleResults.length);
   const totalPages = Math.max(1, Math.ceil(visibleResults.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStart = visibleResults.length === 0 ? 0 : (safeCurrentPage - 1) * PAGE_SIZE + 1;
@@ -1028,7 +1042,9 @@ export function ProspectingClient({
           <CardDescription>
             {visibleResults.length} listings fetched from Google Places public data.
             {visibleResults.length > 0 ? ` Showing ${pageStart}-${pageEnd}.` : ""}
-            {hiddenMarkedCount > 0 ? ` ${hiddenMarkedCount} marked-sent listings hidden.` : ""}
+            {markedHiddenCount > 0 ? ` ${markedHiddenCount} marked-sent listings hidden.` : ""}
+            {confidenceHiddenCount > 0 ? ` ${confidenceHiddenCount} filtered by Facebook confidence.` : ""}
+            {channelHiddenCount > 0 ? ` ${channelHiddenCount} filtered by channel-ready score.` : ""}
             {enriching ? ` Enriching contacts ${enrichProgress.done}/${enrichProgress.total}...` : ""}
           </CardDescription>
         </CardHeader>
