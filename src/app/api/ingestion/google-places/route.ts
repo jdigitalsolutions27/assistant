@@ -400,6 +400,7 @@ export async function POST(request: NextRequest) {
     const payload = googlePlacesSearchSchema.parse(body);
     const categoryGuard = ensureCategoryAccess(user, payload.category_id);
     if (categoryGuard) return categoryGuard;
+    const effectiveOfferMode: OfferMode = user.role === "ADMIN" ? payload.offer_mode : "all";
     if (user.role === "AGENT" && payload.import_leads) {
       return NextResponse.json({ error: "Forbidden: agents cannot import leads." }, { status: 403 });
     }
@@ -468,7 +469,7 @@ export async function POST(request: NextRequest) {
             }),
           );
     const locationScoped = relaxedMatched.length > 0 ? relaxedMatched : ranked;
-    const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, payload.offer_mode));
+    const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
     const scoped = offerScoped.slice(0, payload.max_results);
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys = await getUserMarkedProspectingKeys({
@@ -482,7 +483,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         results: scoped,
         marked_sent_keys: markedSentKeys,
-        offer_mode: payload.offer_mode,
+        offer_mode: effectiveOfferMode,
         imported: 0,
         filtered_out: Math.max(0, locationScoped.length - scoped.length),
         filtered_out_by_offer_mode: Math.max(0, locationScoped.length - offerScoped.length),
@@ -537,7 +538,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       results: enriched,
       marked_sent_keys: markedSentKeys,
-      offer_mode: payload.offer_mode,
+      offer_mode: effectiveOfferMode,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
       generated_at: new Date().toISOString(),

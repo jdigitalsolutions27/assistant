@@ -58,8 +58,48 @@ type BatchResultItem = {
 type MobilePreviewFilter = "all" | "passed" | "facebook" | "email";
 type OfferMode = "launch" | "rebuild" | "all";
 
+const COUNTRY_DIAL_CODE: Record<string, string> = {
+  philippines: "63",
+  "united states": "1",
+  usa: "1",
+  "united states of america": "1",
+  canada: "1",
+  "united kingdom": "44",
+  uk: "44",
+  australia: "61",
+  singapore: "65",
+  "new zealand": "64",
+};
+
 function normalizePhone(value: string | null): string {
   return (value ?? "").replace(/\D/g, "");
+}
+
+function resolveDialCode(country: string | null | undefined): string | null {
+  const key = (country ?? "").trim().toLowerCase();
+  if (!key) return null;
+  return COUNTRY_DIAL_CODE[key] ?? null;
+}
+
+function buildWhatsAppLink(phone: string | null, country: string | null | undefined): string | null {
+  let digits = normalizePhone(phone);
+  if (!digits) return null;
+
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0")) {
+    const dial = resolveDialCode(country);
+    if (dial) {
+      digits = `${dial}${digits.replace(/^0+/, "")}`;
+    }
+  } else {
+    const dial = resolveDialCode(country);
+    if (dial && digits.length === 10) {
+      digits = `${dial}${digits}`;
+    }
+  }
+
+  if (digits.length < 8 || digits.length > 15) return null;
+  return `https://wa.me/${digits}`;
 }
 
 function getPreviewMatchKey(row: PlacePreview): string {
@@ -139,7 +179,7 @@ export function ProspectingClient({
   const [maxResults, setMaxResults] = useState(120);
   const [currentPage, setCurrentPage] = useState(1);
   const [results, setResults] = useState<PlacePreview[]>([]);
-  const [offerMode, setOfferMode] = useState<OfferMode>("launch");
+  const [offerMode, setOfferMode] = useState<OfferMode>(agentMode ? "all" : "launch");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLanguage, setBatchLanguage] = useState<MessageLanguage>("Taglish");
   const [batchTone, setBatchTone] = useState<MessageTone>("Soft");
@@ -164,6 +204,8 @@ export function ProspectingClient({
   const enrichInFlightRef = useRef(new Set<number>());
 
   const selectedCategory = useMemo(() => categories.find((item) => item.id === categoryId) ?? null, [categories, categoryId]);
+  const selectedLocation = useMemo(() => locations.find((item) => item.id === locationId) ?? null, [locations, locationId]);
+  const effectiveOfferMode: OfferMode = agentMode ? "all" : offerMode;
   const personalLocations = useMemo(
     () => locations.filter((location) => location.owner_user_id && location.owner_user_id === currentUserId),
     [locations, currentUserId],
@@ -206,9 +248,9 @@ export function ProspectingClient({
     if (mobileFilter === "email") return paginatedResults.filter((row) => Boolean(row.email));
     return paginatedResults.filter((row) => {
       const channels = [Boolean(row.website_url), Boolean(row.facebook_url), normalizePhone(row.phone).length >= 7, Boolean(row.email)].filter(Boolean).length;
-      return channels > 0 && computePreviewFitScore(row, offerMode) >= minFitScore;
+      return channels > 0 && computePreviewFitScore(row, effectiveOfferMode) >= minFitScore;
     });
-  }, [mobileFilter, paginatedResults, minFitScore, offerMode]);
+  }, [mobileFilter, paginatedResults, minFitScore, effectiveOfferMode]);
 
   const selectedRows = useMemo(
     () => visibleResults.filter((row) => selectedKeys.has(buildProspectingMatchKey(row))),
@@ -219,14 +261,14 @@ export function ProspectingClient({
     let passed = 0;
     for (const row of selectedRows) {
       const channels = [Boolean(row.website_url), Boolean(row.facebook_url), normalizePhone(row.phone).length >= 7, Boolean(row.email)].filter(Boolean).length;
-      if (channels > 0 && computePreviewFitScore(row, offerMode) >= minFitScore) passed += 1;
+      if (channels > 0 && computePreviewFitScore(row, effectiveOfferMode) >= minFitScore) passed += 1;
     }
     return {
       selected: selectedRows.length,
       passed,
       blocked: Math.max(0, selectedRows.length - passed),
     };
-  }, [selectedRows, minFitScore, offerMode]);
+  }, [selectedRows, minFitScore, effectiveOfferMode]);
 
   const batchResultMap = useMemo(() => new Map(batchResults.map((item) => [item.match_key, item])), [batchResults]);
 
@@ -297,7 +339,7 @@ export function ProspectingClient({
           category_id: categoryId,
           location_id: locationId,
           keywords: currentKeywords.length ? currentKeywords : ["business"],
-          offer_mode: offerMode,
+          offer_mode: effectiveOfferMode,
           import_leads: shouldImport,
           max_results: maxResults,
         }),
@@ -314,15 +356,15 @@ export function ProspectingClient({
       if (shouldImport) {
         setMessage(`Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`);
       } else if (previewRows.length === 0) {
-        if (offerMode === "launch") {
+        if (effectiveOfferMode === "launch") {
           setMessage("No no-website leads found for this location and keywords. Try different keywords or switch Offer Mode.");
-        } else if (offerMode === "rebuild") {
+        } else if (effectiveOfferMode === "rebuild") {
           setMessage("No website-ready leads found for this location and keywords. Try different keywords or switch Offer Mode.");
         } else {
           setMessage("No leads found for this location and keywords.");
         }
       } else if ((payload.filtered_out_by_offer_mode ?? 0) > 0) {
-        setMessage(`Showing ${offerMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`);
+        setMessage(`Showing ${effectiveOfferMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Search failed.");
@@ -713,35 +755,39 @@ export function ProspectingClient({
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
-            <Button
-              type="button"
-              variant={offerMode === "launch" ? "default" : "outline"}
-              className="h-10"
-              onClick={() => setOfferMode("launch")}
-            >
-              Launch (No Website)
-            </Button>
-            <Button
-              type="button"
-              variant={offerMode === "rebuild" ? "default" : "outline"}
-              className="h-10"
-              onClick={() => setOfferMode("rebuild")}
-            >
-              Rebuild (Has Website)
-            </Button>
-            <Button
-              type="button"
-              variant={offerMode === "all" ? "default" : "outline"}
-              className="h-10"
-              onClick={() => setOfferMode("all")}
-            >
-              All Leads
-            </Button>
-          </div>
-          <p className="text-xs text-slate-600 dark:text-slate-300">
-            Offer Mode controls accuracy: Launch returns businesses without websites; Rebuild returns businesses with websites only.
-          </p>
+          {!agentMode ? (
+            <>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Button
+                  type="button"
+                  variant={offerMode === "launch" ? "default" : "outline"}
+                  className="h-10"
+                  onClick={() => setOfferMode("launch")}
+                >
+                  Launch (No Website)
+                </Button>
+                <Button
+                  type="button"
+                  variant={offerMode === "rebuild" ? "default" : "outline"}
+                  className="h-10"
+                  onClick={() => setOfferMode("rebuild")}
+                >
+                  Rebuild (Has Website)
+                </Button>
+                <Button
+                  type="button"
+                  variant={offerMode === "all" ? "default" : "outline"}
+                  className="h-10"
+                  onClick={() => setOfferMode("all")}
+                >
+                  All Leads
+                </Button>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Offer Mode controls accuracy: Launch returns businesses without websites; Rebuild returns businesses with websites only.
+              </p>
+            </>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => runSearch(false)} disabled={loading || !canRunProspecting}>
@@ -938,7 +984,7 @@ export function ProspectingClient({
               const rowKey = getRowSelectionKey(row);
               const isSelected = selectedKeys.has(rowKey);
               const isMarkedSent = markedSentKeys.has(rowKey);
-              const fitScore = computePreviewFitScore(row, offerMode);
+              const fitScore = computePreviewFitScore(row, effectiveOfferMode);
               const channels = [
                 Boolean(row.website_url),
                 Boolean(row.facebook_url),
@@ -947,6 +993,7 @@ export function ProspectingClient({
               ].filter(Boolean).length;
               const fitPassed = channels > 0 && fitScore >= minFitScore;
               const generated = batchResultMap.get(getPreviewMatchKey(row));
+              const whatsappLink = buildWhatsAppLink(row.phone, selectedLocation?.country ?? null);
 
               return (
                 <div
@@ -990,6 +1037,16 @@ export function ProspectingClient({
                   </div>
 
                   <div className="mt-3 grid gap-2">
+                    {whatsappLink ? (
+                      <a
+                        href={whatsappLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-h-9 items-center rounded-md border border-emerald-300 bg-emerald-100 px-2.5 py-1.5 text-sm font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      >
+                        Open WhatsApp
+                      </a>
+                    ) : null}
                     {row.website_url ? (
                       <a
                         href={row.website_url}
@@ -1057,7 +1114,7 @@ export function ProspectingClient({
                   const absoluteIndex = (safeCurrentPage - 1) * PAGE_SIZE + idx;
                   const rowKey = getRowSelectionKey(row);
                   const isMarkedSent = markedSentKeys.has(rowKey);
-                  const fitScore = computePreviewFitScore(row, offerMode);
+                  const fitScore = computePreviewFitScore(row, effectiveOfferMode);
                   const channels = [
                     Boolean(row.website_url),
                     Boolean(row.facebook_url),
@@ -1066,6 +1123,7 @@ export function ProspectingClient({
                   ].filter(Boolean).length;
                   const fitPassed = channels > 0 && fitScore >= minFitScore;
                   const generated = batchResultMap.get(getPreviewMatchKey(row));
+                  const whatsappLink = buildWhatsAppLink(row.phone, selectedLocation?.country ?? null);
 
                   return (
                     <TableRow
@@ -1115,6 +1173,16 @@ export function ProspectingClient({
                       </TableCell>
                       <TableCell className="min-w-[170px]">
                         <p className="text-sm text-slate-800 dark:text-slate-100">{row.phone ?? "-"}</p>
+                        {whatsappLink ? (
+                          <a
+                            href={whatsappLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 hover:underline dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                          >
+                            Open WhatsApp
+                          </a>
+                        ) : null}
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{row.email ?? (row.website_url && !row.contact_checked ? "Checking email..." : "No email")}</p>
                         <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
                           Contact confidence: {row.contact_verification?.overall_score ?? 0}/100
