@@ -43,6 +43,8 @@ type PreviewRow = {
   raw_json: Record<string, unknown>;
 };
 
+type OfferMode = "launch" | "rebuild" | "all";
+
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
 }
@@ -375,6 +377,13 @@ function matchesSelectedLocationRelaxed(
   return true;
 }
 
+function matchesOfferMode(row: PreviewRow, offerMode: OfferMode): boolean {
+  if (offerMode === "all") return true;
+  const hasWebsite = Boolean(row.website_url?.trim());
+  if (offerMode === "launch") return !hasWebsite;
+  return hasWebsite;
+}
+
 export async function POST(request: NextRequest) {
   const guard = await enforceApiGuards(request, { max: 14, windowMs: 60_000, bucket: "places-search", roles: ["ADMIN", "AGENT"] });
   if (guard) return guard;
@@ -458,7 +467,9 @@ export async function POST(request: NextRequest) {
               country: location.country,
             }),
           );
-    const scoped = (relaxedMatched.length > 0 ? relaxedMatched : ranked).slice(0, payload.max_results);
+    const locationScoped = relaxedMatched.length > 0 ? relaxedMatched : ranked;
+    const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, payload.offer_mode));
+    const scoped = offerScoped.slice(0, payload.max_results);
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys = await getUserMarkedProspectingKeys({
       user_id: user.id,
@@ -471,8 +482,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         results: scoped,
         marked_sent_keys: markedSentKeys,
+        offer_mode: payload.offer_mode,
         imported: 0,
-        filtered_out: Math.max(0, ranked.length - scoped.length),
+        filtered_out: Math.max(0, locationScoped.length - scoped.length),
+        filtered_out_by_offer_mode: Math.max(0, locationScoped.length - offerScoped.length),
         generated_at: new Date().toISOString(),
       });
     }
@@ -524,6 +537,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       results: enriched,
       marked_sent_keys: markedSentKeys,
+      offer_mode: payload.offer_mode,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
       generated_at: new Date().toISOString(),

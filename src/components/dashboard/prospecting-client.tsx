@@ -56,6 +56,7 @@ type BatchResultItem = {
 };
 
 type MobilePreviewFilter = "all" | "passed" | "facebook" | "email";
+type OfferMode = "launch" | "rebuild" | "all";
 
 function normalizePhone(value: string | null): string {
   return (value ?? "").replace(/\D/g, "");
@@ -73,10 +74,17 @@ function getPreviewMatchKey(row: PlacePreview): string {
   ].join("|");
 }
 
-function computePreviewFitScore(row: PlacePreview): number {
+function computePreviewFitScore(row: PlacePreview, offerMode: OfferMode): number {
   let score = 0;
-  if (row.business_name?.trim()) score += 14;
-  if (row.website_url?.trim()) score += 20;
+  const hasWebsite = Boolean(row.website_url?.trim());
+  if (row.business_name?.trim()) score += 16;
+  if (offerMode === "launch") {
+    score += hasWebsite ? 4 : 24;
+  } else if (offerMode === "rebuild") {
+    score += hasWebsite ? 24 : -18;
+  } else if (hasWebsite) {
+    score += 18;
+  }
   if (row.facebook_url?.trim()) score += 16;
   if (normalizePhone(row.phone).length >= 7) score += 14;
   if (row.email?.trim()) score += 18;
@@ -131,6 +139,7 @@ export function ProspectingClient({
   const [maxResults, setMaxResults] = useState(120);
   const [currentPage, setCurrentPage] = useState(1);
   const [results, setResults] = useState<PlacePreview[]>([]);
+  const [offerMode, setOfferMode] = useState<OfferMode>("launch");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLanguage, setBatchLanguage] = useState<MessageLanguage>("Taglish");
   const [batchTone, setBatchTone] = useState<MessageTone>("Soft");
@@ -197,9 +206,9 @@ export function ProspectingClient({
     if (mobileFilter === "email") return paginatedResults.filter((row) => Boolean(row.email));
     return paginatedResults.filter((row) => {
       const channels = [Boolean(row.website_url), Boolean(row.facebook_url), normalizePhone(row.phone).length >= 7, Boolean(row.email)].filter(Boolean).length;
-      return channels > 0 && computePreviewFitScore(row) >= minFitScore;
+      return channels > 0 && computePreviewFitScore(row, offerMode) >= minFitScore;
     });
-  }, [mobileFilter, paginatedResults, minFitScore]);
+  }, [mobileFilter, paginatedResults, minFitScore, offerMode]);
 
   const selectedRows = useMemo(
     () => visibleResults.filter((row) => selectedKeys.has(buildProspectingMatchKey(row))),
@@ -210,14 +219,14 @@ export function ProspectingClient({
     let passed = 0;
     for (const row of selectedRows) {
       const channels = [Boolean(row.website_url), Boolean(row.facebook_url), normalizePhone(row.phone).length >= 7, Boolean(row.email)].filter(Boolean).length;
-      if (channels > 0 && computePreviewFitScore(row) >= minFitScore) passed += 1;
+      if (channels > 0 && computePreviewFitScore(row, offerMode) >= minFitScore) passed += 1;
     }
     return {
       selected: selectedRows.length,
       passed,
       blocked: Math.max(0, selectedRows.length - passed),
     };
-  }, [selectedRows, minFitScore]);
+  }, [selectedRows, minFitScore, offerMode]);
 
   const batchResultMap = useMemo(() => new Map(batchResults.map((item) => [item.match_key, item])), [batchResults]);
 
@@ -276,8 +285,10 @@ export function ProspectingClient({
       const payload = await requestJson<{
         results?: PlacePreview[];
         marked_sent_keys?: string[];
+        offer_mode?: OfferMode;
         imported?: number;
         skipped_duplicates?: number;
+        filtered_out_by_offer_mode?: number;
         error?: string;
       }>("/api/ingestion/google-places", {
         method: "POST",
@@ -286,6 +297,7 @@ export function ProspectingClient({
           category_id: categoryId,
           location_id: locationId,
           keywords: currentKeywords.length ? currentKeywords : ["business"],
+          offer_mode: offerMode,
           import_leads: shouldImport,
           max_results: maxResults,
         }),
@@ -301,6 +313,16 @@ export function ProspectingClient({
       }
       if (shouldImport) {
         setMessage(`Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`);
+      } else if (previewRows.length === 0) {
+        if (offerMode === "launch") {
+          setMessage("No no-website leads found for this location and keywords. Try different keywords or switch Offer Mode.");
+        } else if (offerMode === "rebuild") {
+          setMessage("No website-ready leads found for this location and keywords. Try different keywords or switch Offer Mode.");
+        } else {
+          setMessage("No leads found for this location and keywords.");
+        }
+      } else if ((payload.filtered_out_by_offer_mode ?? 0) > 0) {
+        setMessage(`Showing ${offerMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Search failed.");
@@ -691,6 +713,36 @@ export function ProspectingClient({
             </div>
           </div>
 
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Button
+              type="button"
+              variant={offerMode === "launch" ? "default" : "outline"}
+              className="h-10"
+              onClick={() => setOfferMode("launch")}
+            >
+              Launch (No Website)
+            </Button>
+            <Button
+              type="button"
+              variant={offerMode === "rebuild" ? "default" : "outline"}
+              className="h-10"
+              onClick={() => setOfferMode("rebuild")}
+            >
+              Rebuild (Has Website)
+            </Button>
+            <Button
+              type="button"
+              variant={offerMode === "all" ? "default" : "outline"}
+              className="h-10"
+              onClick={() => setOfferMode("all")}
+            >
+              All Leads
+            </Button>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Offer Mode controls accuracy: Launch returns businesses without websites; Rebuild returns businesses with websites only.
+          </p>
+
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => runSearch(false)} disabled={loading || !canRunProspecting}>
               {loading ? "Searching..." : "Preview Results"}
@@ -886,7 +938,7 @@ export function ProspectingClient({
               const rowKey = getRowSelectionKey(row);
               const isSelected = selectedKeys.has(rowKey);
               const isMarkedSent = markedSentKeys.has(rowKey);
-              const fitScore = computePreviewFitScore(row);
+              const fitScore = computePreviewFitScore(row, offerMode);
               const channels = [
                 Boolean(row.website_url),
                 Boolean(row.facebook_url),
@@ -1005,7 +1057,7 @@ export function ProspectingClient({
                   const absoluteIndex = (safeCurrentPage - 1) * PAGE_SIZE + idx;
                   const rowKey = getRowSelectionKey(row);
                   const isMarkedSent = markedSentKeys.has(rowKey);
-                  const fitScore = computePreviewFitScore(row);
+                  const fitScore = computePreviewFitScore(row, offerMode);
                   const channels = [
                     Boolean(row.website_url),
                     Boolean(row.facebook_url),
