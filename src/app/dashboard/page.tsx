@@ -36,7 +36,7 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Dashboard</h1>
           <p className="text-sm text-slate-600 dark:text-slate-300">Lead system performance and outreach pipeline health.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/dashboard/today" className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
             Today Queue
           </Link>

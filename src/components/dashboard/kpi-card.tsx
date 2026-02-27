@@ -4,11 +4,11 @@ export function KpiCard({ title, value, sub }: { title: string; value: string | 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-slate-600">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-300">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        {sub ? <p className="mt-1 text-xs text-slate-500">{sub}</p> : null}
+        <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
+        {sub ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{sub}</p> : null}
       </CardContent>
     </Card>
   );

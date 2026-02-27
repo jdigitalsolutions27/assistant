@@ -29,10 +29,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{lead.business_name ?? "Unnamed Lead"}</h1>
-          <p className="text-sm text-slate-600">Lead profile, scoring, messages, and manual outreach queue.</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{lead.business_name ?? "Unnamed Lead"}</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Lead profile, scoring, messages, and manual outreach queue.</p>
         </div>
-        <Link href="/dashboard/leads" className="text-sm font-medium text-blue-700 hover:underline">
+        <Link href="/dashboard/leads" className="text-sm font-medium text-blue-700 hover:underline dark:text-sky-300">
           Back to Leads
         </Link>
       </div>
@@ -44,37 +44,37 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <CardTitle>Lead Profile</CardTitle>
               <CardDescription>Core details from ingestion and enrichment.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-700">
+            <CardContent className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
               <p>
-                <span className="font-medium text-slate-900">Status:</span> <StatusBadge status={lead.status} />
+                <span className="font-medium text-slate-900 dark:text-slate-100">Status:</span> <StatusBadge status={lead.status} />
               </p>
               <p>
-                <span className="font-medium text-slate-900">Category:</span> {categoryName}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Category:</span> {categoryName}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Location:</span> {locationName}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Location:</span> {locationName}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Campaign:</span> {campaignName}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Campaign:</span> {campaignName}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Address:</span> {lead.address ?? "-"}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Address:</span> {lead.address ?? "-"}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Phone:</span> {lead.phone ?? "-"}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Phone:</span> {lead.phone ?? "-"}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Website:</span> {lead.website_url ?? "-"}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Website:</span> {lead.website_url ?? "-"}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Facebook:</span> {lead.facebook_url ?? "-"}
+                <span className="font-medium text-slate-900 dark:text-slate-100">Facebook:</span> {lead.facebook_url ?? "-"}
               </p>
               <p>
-                <span className="font-medium text-slate-900">Score:</span> {lead.score_total ?? "-"} (H:{lead.score_heuristic ?? "-"} / AI:
+                <span className="font-medium text-slate-900 dark:text-slate-100">Score:</span> {lead.score_total ?? "-"} (H:{lead.score_heuristic ?? "-"} / AI:
                 {lead.score_ai ?? "-"})
               </p>
               <p>
-                <span className="font-medium text-slate-900">Lead Quality:</span> {lead.quality_tier} ({lead.quality_score}/100)
+                <span className="font-medium text-slate-900 dark:text-slate-100">Lead Quality:</span> {lead.quality_tier} ({lead.quality_score}/100)
               </p>
             </CardContent>
           </Card>
@@ -85,26 +85,28 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <CardDescription>Outreach actions and status transitions.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Event</TableHead>
-                    <TableHead>When</TableHead>
-                    <TableHead>Metadata</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {bundle.events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell>{event.event_type}</TableCell>
-                      <TableCell>{format(new Date(event.created_at), "MMM d, yyyy HH:mm")}</TableCell>
-                      <TableCell className="max-w-[280px] truncate text-xs text-slate-600">
-                        {JSON.stringify(event.metadata_json)}
-                      </TableCell>
+              <div className="overflow-auto">
+                <Table className="min-w-[540px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Event</TableHead>
+                      <TableHead>When</TableHead>
+                      <TableHead>Metadata</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {bundle.events.map((event) => (
+                      <TableRow key={event.id}>
+                        <TableCell>{event.event_type}</TableCell>
+                        <TableCell>{format(new Date(event.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+                        <TableCell className="max-w-[280px] truncate text-xs text-slate-600 dark:text-slate-300">
+                          {JSON.stringify(event.metadata_json)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>

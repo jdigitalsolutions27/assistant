@@ -27,8 +27,8 @@ export default async function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Analytics & Optimization</h1>
-        <p className="text-sm text-slate-600">Performance by pipeline stage, market segment, and message variants.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Analytics & Optimization</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Performance by pipeline stage, market segment, and message variants.</p>
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -46,9 +46,9 @@ export default async function AnalyticsPage() {
           <CardContent>
             <ul className="space-y-2">
               {Object.entries(breakdowns.byCategory).map(([key, value]) => (
-                <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                  <span>{key}</span>
-                  <span className="font-semibold">{value}</span>
+                <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                  <span className="text-slate-700 dark:text-slate-200">{key}</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{value}</span>
                 </li>
               ))}
             </ul>
@@ -62,9 +62,9 @@ export default async function AnalyticsPage() {
           <CardContent>
             <ul className="space-y-2">
               {Object.entries(breakdowns.byLocation).map(([key, value]) => (
-                <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                  <span>{key}</span>
-                  <span className="font-semibold">{value}</span>
+                <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                  <span className="text-slate-700 dark:text-slate-200">{key}</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{value}</span>
                 </li>
               ))}
             </ul>
@@ -78,9 +78,9 @@ export default async function AnalyticsPage() {
           <CardContent>
             <ul className="space-y-2">
               {Object.entries(breakdowns.byCampaign).map(([key, value]) => (
-                <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                  <span>{key}</span>
-                  <span className="font-semibold">{value}</span>
+                <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                  <span className="text-slate-700 dark:text-slate-200">{key}</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{value}</span>
                 </li>
               ))}
             </ul>
@@ -96,23 +96,23 @@ export default async function AnalyticsPage() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-slate-800">Angles</h3>
+              <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Angles</h3>
               <ul className="space-y-2">
                 {Object.entries(breakdowns.byAngle).map(([key, value]) => (
-                  <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                    <span>{key}</span>
-                    <span>{value}</span>
+                  <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                    <span className="text-slate-700 dark:text-slate-200">{key}</span>
+                    <span className="text-slate-900 dark:text-slate-100">{value}</span>
                   </li>
                 ))}
               </ul>
             </div>
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-slate-800">Languages</h3>
+              <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Languages</h3>
               <ul className="space-y-2">
                 {Object.entries(breakdowns.byLanguage).map(([key, value]) => (
-                  <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                    <span>{key}</span>
-                    <span>{value}</span>
+                  <li key={key} className="flex justify-between rounded border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                    <span className="text-slate-700 dark:text-slate-200">{key}</span>
+                    <span className="text-slate-900 dark:text-slate-100">{value}</span>
                   </li>
                 ))}
               </ul>
@@ -121,12 +121,13 @@ export default async function AnalyticsPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Best Performing Variant by Category</CardTitle>
-            <CardDescription>Recommendation based on observed won/sent ratio.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
+        <CardHeader>
+          <CardTitle>Best Performing Variant by Category</CardTitle>
+          <CardDescription>Recommendation based on observed won/sent ratio.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-auto">
+            <Table className="min-w-[520px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Category</TableHead>
@@ -146,8 +147,9 @@ export default async function AnalyticsPage() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
       </section>
 
       <Card>
@@ -156,34 +158,36 @@ export default async function AnalyticsPage() {
           <CardDescription>Track sent-to-reply-to-win outcomes per campaign with average reply time.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Campaign</TableHead>
-                <TableHead>Sent</TableHead>
-                <TableHead>Replied</TableHead>
-                <TableHead>Qualified</TableHead>
-                <TableHead>Won</TableHead>
-                <TableHead>Reply Rate</TableHead>
-                <TableHead>Win Rate</TableHead>
-                <TableHead>Avg Reply (hrs)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {campaignFunnel.map((item) => (
-                <TableRow key={item.campaign_id}>
-                  <TableCell>{item.campaign_name}</TableCell>
-                  <TableCell>{item.sent}</TableCell>
-                  <TableCell>{item.replied}</TableCell>
-                  <TableCell>{item.qualified}</TableCell>
-                  <TableCell>{item.won}</TableCell>
-                  <TableCell>{(item.reply_rate * 100).toFixed(1)}%</TableCell>
-                  <TableCell>{(item.win_rate * 100).toFixed(1)}%</TableCell>
-                  <TableCell>{item.avg_reply_hours ?? "-"}</TableCell>
+          <div className="overflow-auto">
+            <Table className="min-w-[820px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Campaign</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead>Replied</TableHead>
+                  <TableHead>Qualified</TableHead>
+                  <TableHead>Won</TableHead>
+                  <TableHead>Reply Rate</TableHead>
+                  <TableHead>Win Rate</TableHead>
+                  <TableHead>Avg Reply (hrs)</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {campaignFunnel.map((item) => (
+                  <TableRow key={item.campaign_id}>
+                    <TableCell>{item.campaign_name}</TableCell>
+                    <TableCell>{item.sent}</TableCell>
+                    <TableCell>{item.replied}</TableCell>
+                    <TableCell>{item.qualified}</TableCell>
+                    <TableCell>{item.won}</TableCell>
+                    <TableCell>{(item.reply_rate * 100).toFixed(1)}%</TableCell>
+                    <TableCell>{(item.win_rate * 100).toFixed(1)}%</TableCell>
+                    <TableCell>{item.avg_reply_hours ?? "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -194,36 +198,38 @@ export default async function AnalyticsPage() {
         </CardHeader>
         <CardContent>
           {strategyRecommendations.length === 0 ? (
-            <p className="text-sm text-slate-600">Not enough sent/reply history yet to recommend strategy.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Not enough sent/reply history yet to recommend strategy.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Language</TableHead>
-                  <TableHead>Tone</TableHead>
-                  <TableHead>Angle</TableHead>
-                  <TableHead>Variant</TableHead>
-                  <TableHead>Reply Rate</TableHead>
-                  <TableHead>Win Rate</TableHead>
-                  <TableHead>Sent</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {strategyRecommendations.map((item) => (
-                  <TableRow key={`${item.category}-${item.language}-${item.tone}-${item.angle}-${item.variant}`}>
-                    <TableCell>{item.category}</TableCell>
-                    <TableCell>{item.language}</TableCell>
-                    <TableCell>{item.tone}</TableCell>
-                    <TableCell>{item.angle}</TableCell>
-                    <TableCell>{item.variant}</TableCell>
-                    <TableCell>{(item.reply_rate * 100).toFixed(1)}%</TableCell>
-                    <TableCell>{(item.win_rate * 100).toFixed(1)}%</TableCell>
-                    <TableCell>{item.sent}</TableCell>
+            <div className="overflow-auto">
+              <Table className="min-w-[820px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Language</TableHead>
+                    <TableHead>Tone</TableHead>
+                    <TableHead>Angle</TableHead>
+                    <TableHead>Variant</TableHead>
+                    <TableHead>Reply Rate</TableHead>
+                    <TableHead>Win Rate</TableHead>
+                    <TableHead>Sent</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {strategyRecommendations.map((item) => (
+                    <TableRow key={`${item.category}-${item.language}-${item.tone}-${item.angle}-${item.variant}`}>
+                      <TableCell>{item.category}</TableCell>
+                      <TableCell>{item.language}</TableCell>
+                      <TableCell>{item.tone}</TableCell>
+                      <TableCell>{item.angle}</TableCell>
+                      <TableCell>{item.variant}</TableCell>
+                      <TableCell>{(item.reply_rate * 100).toFixed(1)}%</TableCell>
+                      <TableCell>{(item.win_rate * 100).toFixed(1)}%</TableCell>
+                      <TableCell>{item.sent}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -235,38 +241,40 @@ export default async function AnalyticsPage() {
         </CardHeader>
         <CardContent>
           {strategyByCategoryLocation.length === 0 ? (
-            <p className="text-sm text-slate-600">Not enough conversion history yet per category-location pair.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Not enough conversion history yet per category-location pair.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Language</TableHead>
-                  <TableHead>Tone</TableHead>
-                  <TableHead>Angle</TableHead>
-                  <TableHead>Variant</TableHead>
-                  <TableHead>Reply Rate</TableHead>
-                  <TableHead>Win Rate</TableHead>
-                  <TableHead>Sent</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {strategyByCategoryLocation.map((item) => (
-                  <TableRow key={`${item.category}-${item.location}-${item.language}-${item.tone}-${item.angle}-${item.variant}`}>
-                    <TableCell>{item.category}</TableCell>
-                    <TableCell>{item.location}</TableCell>
-                    <TableCell>{item.language}</TableCell>
-                    <TableCell>{item.tone}</TableCell>
-                    <TableCell>{item.angle}</TableCell>
-                    <TableCell>{item.variant}</TableCell>
-                    <TableCell>{(item.reply_rate * 100).toFixed(1)}%</TableCell>
-                    <TableCell>{(item.win_rate * 100).toFixed(1)}%</TableCell>
-                    <TableCell>{item.sent}</TableCell>
+            <div className="overflow-auto">
+              <Table className="min-w-[980px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Language</TableHead>
+                    <TableHead>Tone</TableHead>
+                    <TableHead>Angle</TableHead>
+                    <TableHead>Variant</TableHead>
+                    <TableHead>Reply Rate</TableHead>
+                    <TableHead>Win Rate</TableHead>
+                    <TableHead>Sent</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {strategyByCategoryLocation.map((item) => (
+                    <TableRow key={`${item.category}-${item.location}-${item.language}-${item.tone}-${item.angle}-${item.variant}`}>
+                      <TableCell>{item.category}</TableCell>
+                      <TableCell>{item.location}</TableCell>
+                      <TableCell>{item.language}</TableCell>
+                      <TableCell>{item.tone}</TableCell>
+                      <TableCell>{item.angle}</TableCell>
+                      <TableCell>{item.variant}</TableCell>
+                      <TableCell>{(item.reply_rate * 100).toFixed(1)}%</TableCell>
+                      <TableCell>{(item.win_rate * 100).toFixed(1)}%</TableCell>
+                      <TableCell>{item.sent}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
