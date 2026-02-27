@@ -70,16 +70,16 @@ export default async function TemplatesPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Message Templates</h1>
-        <p className="text-sm text-slate-600">Seed and edit base templates per category, language, and tone.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Message Templates</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Seed and edit base templates per category, language, and tone.</p>
         {notice ? (
           <p
             className={`mt-2 rounded-md border px-3 py-2 text-sm ${
               noticeTone === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
                 : noticeTone === "warn"
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : "border-slate-200 bg-slate-50 text-slate-700"
+                  ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                  : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-200"
             }`}
           >
             {notice}
@@ -154,7 +154,7 @@ export default async function TemplatesPage({
                     <TableCell>{categoryMap.get(template.category_id) ?? "Unknown"}</TableCell>
                     <TableCell>{template.language}</TableCell>
                     <TableCell>{template.tone}</TableCell>
-                    <TableCell className="max-w-[620px] text-xs text-slate-700">{template.template_text}</TableCell>
+                    <TableCell className="max-w-[620px] text-xs text-slate-700 dark:text-slate-200">{template.template_text}</TableCell>
                     <TableCell className="text-right">
                       <ConfirmActionForm
                         action={deleteTemplateAction}

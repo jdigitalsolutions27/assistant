@@ -156,15 +156,22 @@ export default async function CampaignsPage({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Campaign Workbench</h1>
-          <p className="text-sm text-slate-600">Build campaigns, auto-assign leads, and generate manual follow-up drafts.</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Campaign Workbench</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Build campaigns, auto-assign leads, and generate manual follow-up drafts.</p>
         </div>
-        <Link href="/dashboard/leads" className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+        <Link
+          href="/dashboard/leads"
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
           Open Lead Queue
         </Link>
       </div>
 
-      {message ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
+      {message ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+          {message}
+        </p>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -261,7 +268,7 @@ export default async function CampaignsPage({
           <CardDescription>Reusable campaign presets so you can launch winning setups in seconds.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form action={createPlaybookAction} className="grid gap-3 md:grid-cols-3 rounded-lg border border-slate-200 p-3">
+          <form action={createPlaybookAction} className="grid gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700 md:grid-cols-3">
             <div className="space-y-1 md:col-span-3">
               <Label>Playbook Name</Label>
               <Input name="name" placeholder="Hotel Soft Follow-up Playbook" required />
@@ -336,25 +343,25 @@ export default async function CampaignsPage({
 
           <div className="space-y-2">
             {playbooks.map((playbook) => (
-              <form key={playbook.id} action={launchPlaybookAction} className="rounded-lg border border-slate-200 p-3">
+              <form key={playbook.id} action={launchPlaybookAction} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <input type="hidden" name="playbook_id" value={playbook.id} />
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{playbook.name}</p>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{playbook.name}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
                       {playbook.category_id ? categoryMap.get(playbook.category_id) ?? "Unknown category" : "All categories"} |{" "}
                       {playbook.location_id ? locationMap.get(playbook.location_id) ?? "Unknown location" : "All locations"} | Min quality{" "}
                       {playbook.min_quality_score} | Daily target {playbook.daily_send_target}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Input name="campaign_name" placeholder="Optional campaign name override" className="h-9 w-[300px]" />
+                    <Input name="campaign_name" placeholder="Optional campaign name override" className="h-9 w-full sm:w-[300px]" />
                     <FormSubmitButton size="sm" idleLabel="Launch" pendingLabel="Launching..." />
                   </div>
                 </div>
               </form>
             ))}
-            {playbooks.length === 0 ? <p className="text-sm text-slate-600">No playbooks yet.</p> : null}
+            {playbooks.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">No playbooks yet.</p> : null}
           </div>
         </CardContent>
       </Card>
@@ -368,16 +375,16 @@ export default async function CampaignsPage({
           {campaigns.map((campaign) => {
             const stats = funnelMap.get(campaign.id);
             return (
-              <div key={campaign.id} className="rounded-lg border border-slate-200 p-3">
+              <div key={campaign.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{campaign.name}</p>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{campaign.name}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
                       {campaign.category_id ? categoryMap.get(campaign.category_id) ?? "Unknown category" : "All categories"} |{" "}
                       {campaign.location_id ? locationMap.get(campaign.location_id) ?? "Unknown location" : "All locations"} | Min quality{" "}
                       {campaign.min_quality_score} | Daily target {campaign.daily_send_target}
                     </p>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
                       Sent {stats?.sent ?? 0} | Replied {stats?.replied ?? 0} | Won {stats?.won ?? 0} | Reply rate{" "}
                       {((stats?.reply_rate ?? 0) * 100).toFixed(1)}%
                     </p>
@@ -409,7 +416,9 @@ export default async function CampaignsPage({
               </div>
             );
           })}
-          {campaigns.length === 0 ? <p className="text-sm text-slate-600">Create your first campaign to start structured outreach.</p> : null}
+          {campaigns.length === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">Create your first campaign to start structured outreach.</p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -421,7 +430,7 @@ export default async function CampaignsPage({
         <CardContent>
           <div className="mb-3">
             <form className="flex flex-wrap gap-2">
-              <Select name="campaign" defaultValue={selectedCampaignId || ""} className="w-[320px]">
+              <Select name="campaign" defaultValue={selectedCampaignId || ""} className="w-full sm:w-[320px]">
                 <option value="">All campaigns</option>
                 {campaigns.map((campaign) => (
                   <option key={campaign.id} value={campaign.id}>
@@ -433,38 +442,40 @@ export default async function CampaignsPage({
             </form>
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Business</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Quality</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {priority.map((item) => (
-                <TableRow key={item.lead.id}>
-                  <TableCell>{item.lead.business_name ?? "Unnamed"}</TableCell>
-                  <TableCell>{item.lead.status}</TableCell>
-                  <TableCell>
-                    {item.lead.quality_tier} ({item.lead.quality_score})
-                  </TableCell>
-                  <TableCell>{item.lead.score_total ?? "-"}</TableCell>
-                  <TableCell>{item.priority_score}</TableCell>
-                  <TableCell className="max-w-[280px]">{item.priority_reason}</TableCell>
-                  <TableCell>
-                    <Link href={`/dashboard/leads/${item.lead.id}`} className="text-blue-700 hover:underline">
-                      Open
-                    </Link>
-                  </TableCell>
+          <div className="overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Business</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Quality</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {priority.map((item) => (
+                  <TableRow key={item.lead.id}>
+                    <TableCell>{item.lead.business_name ?? "Unnamed"}</TableCell>
+                    <TableCell>{item.lead.status}</TableCell>
+                    <TableCell>
+                      {item.lead.quality_tier} ({item.lead.quality_score})
+                    </TableCell>
+                    <TableCell>{item.lead.score_total ?? "-"}</TableCell>
+                    <TableCell>{item.priority_score}</TableCell>
+                    <TableCell className="max-w-[280px]">{item.priority_reason}</TableCell>
+                    <TableCell>
+                      <Link href={`/dashboard/leads/${item.lead.id}`} className="text-blue-700 hover:underline dark:text-sky-300">
+                        Open
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

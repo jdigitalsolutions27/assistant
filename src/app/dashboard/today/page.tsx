@@ -44,9 +44,13 @@ export default async function TodayPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Today Queue</h1>
-        <p className="text-sm text-slate-600">Your best leads to message today, with suggested draft and quick status actions.</p>
-        {notice ? <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Today Queue</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">Your best leads to message today, with suggested draft and quick status actions.</p>
+        {notice ? (
+          <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+            {notice}
+          </p>
+        ) : null}
       </div>
 
       <Card>
@@ -57,7 +61,7 @@ export default async function TodayPage({
         <CardContent>
           <form className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div className="min-w-0">
-              <label className="mb-1 block text-sm text-slate-700">Campaign</label>
+              <label className="mb-1 block text-sm text-slate-700 dark:text-slate-200">Campaign</label>
               <select
                 name="campaign"
                 defaultValue={campaignId ?? ""}
@@ -88,37 +92,37 @@ export default async function TodayPage({
           <CardDescription>Generate follow-up drafts for due SENT leads, then copy/send manually in Meta inbox.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-slate-700">Due now (3+ days since SENT): {followUpDue.length}</p>
+          <p className="text-sm text-slate-700 dark:text-slate-200">Due now (3+ days since SENT): {followUpDue.length}</p>
           <form action={runFollowUpsNowAction} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_140px_auto]">
             <input type="hidden" name="campaign_id" value={campaignId ?? ""} />
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Campaign Scope</label>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Campaign Scope</label>
               <input
                 value={campaignId ? campaigns.find((item) => item.id === campaignId)?.name ?? "Selected campaign" : "All campaigns"}
                 disabled
-                className="h-10 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-700"
+                className="h-10 w-full rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Days Since SENT</label>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Days Since SENT</label>
               <input
                 name="days_since_sent"
                 type="number"
                 min={1}
                 max={30}
                 defaultValue={3}
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Max Leads</label>
+              <label className="mb-1 block text-xs text-slate-600 dark:text-slate-300">Max Leads</label>
               <input
                 name="limit"
                 type="number"
                 min={1}
                 max={300}
                 defaultValue={100}
-                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
             <div className="self-end">
