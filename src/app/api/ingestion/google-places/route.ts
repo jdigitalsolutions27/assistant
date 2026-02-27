@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSessionUser } from "@/lib/auth";
 import { enforceApiGuards, ensureCategoryAccess, jsonError } from "@/lib/api-helpers";
-import { evaluateContactVerification, type ContactVerification } from "@/lib/contact-verification";
+import { evaluateContactVerification, type ContactConfidence, type ContactVerification } from "@/lib/contact-verification";
 import { env } from "@/lib/env";
 import { normalizeUrl } from "@/lib/utils";
 import { googlePlacesSearchSchema } from "@/lib/validations";
@@ -44,6 +44,7 @@ type PreviewRow = {
 };
 
 type OfferMode = "launch" | "rebuild" | "all";
+type FacebookConfidenceMin = "none" | "medium" | "high";
 
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
@@ -387,9 +388,10 @@ function matchesOfferMode(row: PreviewRow, offerMode: OfferMode): boolean {
 async function selectStrictFacebookLeads(rows: PreviewRow[], maxResults: number): Promise<{
   selected: PreviewRow[];
   filteredOutByFacebook: number;
+  filteredOutByFacebookConfidence: number;
 }> {
   if (!rows.length || maxResults <= 0) {
-    return { selected: [], filteredOutByFacebook: rows.length };
+    return { selected: [], filteredOutByFacebook: rows.length, filteredOutByFacebookConfidence: 0 };
   }
 
   const scanCap = Math.min(rows.length, Math.max(maxResults * 4, 180));
@@ -413,6 +415,27 @@ async function selectStrictFacebookLeads(rows: PreviewRow[], maxResults: number)
   return {
     selected,
     filteredOutByFacebook: Math.max(0, scanPool.length - resolved.filter((row) => Boolean(row.facebook_url)).length),
+    filteredOutByFacebookConfidence: 0,
+  };
+}
+
+function facebookConfidenceRank(value: ContactConfidence | null | undefined): number {
+  if (value === "high") return 3;
+  if (value === "medium") return 2;
+  if (value === "low") return 1;
+  return 0;
+}
+
+function filterByFacebookConfidence(rows: PreviewRow[], minConfidence: FacebookConfidenceMin): {
+  selected: PreviewRow[];
+  filteredOut: number;
+} {
+  if (minConfidence === "none") return { selected: rows, filteredOut: 0 };
+  const requiredRank = minConfidence === "high" ? 3 : 2;
+  const selected = rows.filter((row) => facebookConfidenceRank(row.contact_verification?.facebook_confidence) >= requiredRank);
+  return {
+    selected,
+    filteredOut: Math.max(0, rows.length - selected.length),
   };
 }
 
@@ -434,6 +457,7 @@ export async function POST(request: NextRequest) {
     if (categoryGuard) return categoryGuard;
     const effectiveOfferMode: OfferMode = user.role === "ADMIN" ? payload.offer_mode : "all";
     const requireFacebook = user.role === "ADMIN" ? payload.require_facebook : false;
+    const facebookConfidenceMin: FacebookConfidenceMin = user.role === "ADMIN" ? payload.facebook_confidence_min : "none";
     if (user.role === "AGENT" && payload.import_leads) {
       return NextResponse.json({ error: "Forbidden: agents cannot import leads." }, { status: 403 });
     }
@@ -505,8 +529,9 @@ export async function POST(request: NextRequest) {
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
     const strictFacebook = requireFacebook
       ? await selectStrictFacebookLeads(offerScoped, payload.max_results)
-      : { selected: offerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0 };
-    const scoped = strictFacebook.selected;
+      : { selected: offerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0, filteredOutByFacebookConfidence: 0 };
+    const confidenceScoped = filterByFacebookConfidence(strictFacebook.selected, facebookConfidenceMin);
+    const scoped = confidenceScoped.selected;
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys = await getUserMarkedProspectingKeys({
       user_id: user.id,
@@ -521,10 +546,13 @@ export async function POST(request: NextRequest) {
         marked_sent_keys: markedSentKeys,
         offer_mode: effectiveOfferMode,
         require_facebook: requireFacebook,
+        facebook_confidence_min: facebookConfidenceMin,
         imported: 0,
         filtered_out: Math.max(0, locationScoped.length - scoped.length),
         filtered_out_by_offer_mode: Math.max(0, locationScoped.length - offerScoped.length),
         filtered_out_by_facebook: strictFacebook.filteredOutByFacebook,
+        filtered_out_by_facebook_confidence:
+          strictFacebook.filteredOutByFacebookConfidence + confidenceScoped.filteredOut,
         generated_at: new Date().toISOString(),
       });
     }
@@ -578,9 +606,11 @@ export async function POST(request: NextRequest) {
       marked_sent_keys: markedSentKeys,
       offer_mode: effectiveOfferMode,
       require_facebook: requireFacebook,
+      facebook_confidence_min: facebookConfidenceMin,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
       filtered_out_by_facebook: strictFacebook.filteredOutByFacebook,
+      filtered_out_by_facebook_confidence: strictFacebook.filteredOutByFacebookConfidence + confidenceScoped.filteredOut,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {

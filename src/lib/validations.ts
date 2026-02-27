@@ -48,6 +48,7 @@ export const googlePlacesSearchSchema = z.object({
   keywords: z.array(z.string().trim().min(2)).min(1).max(20),
   offer_mode: z.enum(["launch", "rebuild", "all"]).default("launch"),
   require_facebook: z.boolean().default(false),
+  facebook_confidence_min: z.enum(["none", "medium", "high"]).default("none"),
   import_leads: z.boolean().default(false),
   max_results: z.number().int().min(1).max(1000).default(120),
 });

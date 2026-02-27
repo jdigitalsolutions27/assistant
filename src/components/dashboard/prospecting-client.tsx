@@ -57,6 +57,7 @@ type BatchResultItem = {
 
 type MobilePreviewFilter = "all" | "passed" | "facebook" | "email";
 type OfferMode = "launch" | "rebuild" | "all";
+type FacebookConfidenceMin = "none" | "medium" | "high";
 
 const COUNTRY_DIAL_CODE: Record<string, string> = {
   philippines: "63",
@@ -73,6 +74,48 @@ const COUNTRY_DIAL_CODE: Record<string, string> = {
 
 function normalizePhone(value: string | null): string {
   return (value ?? "").replace(/\D/g, "");
+}
+
+function confidenceWeight(value: string | null | undefined): number {
+  if (value === "high") return 100;
+  if (value === "medium") return 70;
+  if (value === "low") return 35;
+  return 0;
+}
+
+function facebookConfidenceRank(value: string | null | undefined): number {
+  if (value === "high") return 3;
+  if (value === "medium") return 2;
+  if (value === "low") return 1;
+  return 0;
+}
+
+function matchesFacebookConfidence(row: PlacePreview, min: FacebookConfidenceMin): boolean {
+  if (min === "none") return true;
+  const required = min === "high" ? 3 : 2;
+  return facebookConfidenceRank(row.contact_verification?.facebook_confidence) >= required;
+}
+
+function computeChannelReadyScore(row: PlacePreview): number {
+  const hasWebsite = Boolean(row.website_url?.trim());
+  const hasFacebook = Boolean(row.facebook_url?.trim());
+  const hasPhone = normalizePhone(row.phone).length >= 7;
+  const hasEmail = Boolean(row.email?.trim());
+  const channels = [hasWebsite, hasFacebook, hasPhone, hasEmail].filter(Boolean).length;
+
+  let score = 0;
+  if (hasWebsite) score += 8;
+  if (hasPhone) score += 18;
+  if (hasEmail) score += 16;
+  if (hasFacebook) score += 28;
+
+  score += Math.round(confidenceWeight(row.contact_verification?.phone_confidence) * 0.08);
+  score += Math.round(confidenceWeight(row.contact_verification?.email_confidence) * 0.1);
+  score += Math.round(confidenceWeight(row.contact_verification?.facebook_confidence) * 0.2);
+
+  if (channels >= 2) score += 12;
+  if (channels >= 3) score += 12;
+  return Math.max(0, Math.min(100, score));
 }
 
 function resolveDialCode(country: string | null | undefined): string | null {
@@ -181,6 +224,8 @@ export function ProspectingClient({
   const [results, setResults] = useState<PlacePreview[]>([]);
   const [offerMode, setOfferMode] = useState<OfferMode>(agentMode ? "all" : "launch");
   const [requireFacebook, setRequireFacebook] = useState(true);
+  const [facebookConfidenceMin, setFacebookConfidenceMin] = useState<FacebookConfidenceMin>("medium");
+  const [minChannelReadyScore, setMinChannelReadyScore] = useState(agentMode ? 0 : 55);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLanguage, setBatchLanguage] = useState<MessageLanguage>("Taglish");
   const [batchTone, setBatchTone] = useState<MessageTone>("Soft");
@@ -230,9 +275,13 @@ export function ProspectingClient({
   );
 
   const visibleResults = useMemo(() => {
-    if (!hideMarkedSent) return results;
-    return results.filter((row) => !markedSentKeys.has(buildProspectingMatchKey(row)));
-  }, [results, hideMarkedSent, markedSentKeys]);
+    return results.filter((row) => {
+      if (hideMarkedSent && markedSentKeys.has(buildProspectingMatchKey(row))) return false;
+      if (computeChannelReadyScore(row) < minChannelReadyScore) return false;
+      if (!agentMode && matchesFacebookConfidence(row, facebookConfidenceMin) === false) return false;
+      return true;
+    });
+  }, [results, hideMarkedSent, markedSentKeys, minChannelReadyScore, agentMode, facebookConfidenceMin]);
   const hiddenMarkedCount = Math.max(0, results.length - visibleResults.length);
   const totalPages = Math.max(1, Math.ceil(visibleResults.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -330,10 +379,12 @@ export function ProspectingClient({
         marked_sent_keys?: string[];
         offer_mode?: OfferMode;
         require_facebook?: boolean;
+        facebook_confidence_min?: FacebookConfidenceMin;
         imported?: number;
         skipped_duplicates?: number;
         filtered_out_by_offer_mode?: number;
         filtered_out_by_facebook?: number;
+        filtered_out_by_facebook_confidence?: number;
         error?: string;
       }>("/api/ingestion/google-places", {
         method: "POST",
@@ -344,6 +395,7 @@ export function ProspectingClient({
           keywords: currentKeywords.length ? currentKeywords : ["business"],
           offer_mode: effectiveOfferMode,
           require_facebook: agentMode ? false : requireFacebook,
+          facebook_confidence_min: agentMode ? "none" : facebookConfidenceMin,
           import_leads: shouldImport,
           max_results: maxResults,
         }),
@@ -372,7 +424,10 @@ export function ProspectingClient({
           setMessage("No leads found for this location and keywords.");
         }
       } else if (!agentMode && requireFacebook && (payload.filtered_out_by_facebook ?? 0) > 0) {
-        setMessage(`Facebook strict mode is on. ${payload.filtered_out_by_facebook} listings were filtered out because no Facebook page was verified.`);
+        const confidenceFiltered = payload.filtered_out_by_facebook_confidence ?? 0;
+        setMessage(
+          `Facebook strict mode is on. ${payload.filtered_out_by_facebook} listings had no verified Facebook. ${confidenceFiltered} filtered by confidence threshold.`,
+        );
       } else if ((payload.filtered_out_by_offer_mode ?? 0) > 0) {
         setMessage(`Showing ${effectiveOfferMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`);
       }
@@ -800,6 +855,30 @@ export function ProspectingClient({
                 <input type="checkbox" checked={requireFacebook} onChange={(event) => setRequireFacebook(event.target.checked)} />
                 Require Facebook (strict)
               </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>Facebook Confidence</Label>
+                  <Select value={facebookConfidenceMin} onChange={(event) => setFacebookConfidenceMin(event.target.value as FacebookConfidenceMin)}>
+                    <option value="none">All</option>
+                    <option value="medium">Medium and above</option>
+                    <option value="high">High only</option>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Min Channel Ready</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={minChannelReadyScore}
+                    onChange={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10);
+                      if (!Number.isFinite(parsed)) return;
+                      setMinChannelReadyScore(Math.max(0, Math.min(100, parsed)));
+                    }}
+                  />
+                </div>
+              </div>
               <p className="text-xs text-slate-500 dark:text-slate-300">
                 When enabled, only leads with verified Facebook page links are shown.
               </p>
@@ -1011,6 +1090,7 @@ export function ProspectingClient({
               const fitPassed = channels > 0 && fitScore >= minFitScore;
               const generated = batchResultMap.get(getPreviewMatchKey(row));
               const whatsappLink = buildWhatsAppLink(row.phone, selectedLocation?.country ?? null);
+              const channelReadyScore = computeChannelReadyScore(row);
 
               return (
                 <div
@@ -1054,6 +1134,7 @@ export function ProspectingClient({
                     <p className="text-[11px] text-slate-500 dark:text-slate-300">
                       Facebook confidence: {row.contact_verification?.facebook_confidence ?? "none"}
                     </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-300">Channel ready: {channelReadyScore}/100</p>
                   </div>
 
                   <div className="mt-3 grid gap-2">
@@ -1144,6 +1225,7 @@ export function ProspectingClient({
                   const fitPassed = channels > 0 && fitScore >= minFitScore;
                   const generated = batchResultMap.get(getPreviewMatchKey(row));
                   const whatsappLink = buildWhatsAppLink(row.phone, selectedLocation?.country ?? null);
+                  const channelReadyScore = computeChannelReadyScore(row);
 
                   return (
                     <TableRow
@@ -1210,6 +1292,7 @@ export function ProspectingClient({
                         <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
                           Facebook confidence: {row.contact_verification?.facebook_confidence ?? "none"}
                         </p>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">Channel ready: {channelReadyScore}/100</p>
                       </TableCell>
                       <TableCell className="min-w-[240px] space-y-1">
                         {row.website_url ? (
