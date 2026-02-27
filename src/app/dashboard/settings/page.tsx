@@ -1,8 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddLocationForm } from "@/components/dashboard/add-location-form";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -315,7 +315,7 @@ export default async function SettingsPage({
                   <option value="organization">organization</option>
                 </Select>
               </div>
-              <Button type="submit">Save Category</Button>
+              <FormSubmitButton idleLabel="Save Category" pendingLabel="Saving category..." />
             </form>
           </CardContent>
         </Card>
@@ -405,7 +405,7 @@ export default async function SettingsPage({
               </div>
             </div>
             <div className="mt-3">
-              <Button type="submit">Create User Account</Button>
+              <FormSubmitButton idleLabel="Create User Account" pendingLabel="Creating user..." />
             </div>
           </form>
         </CardContent>
@@ -474,9 +474,7 @@ export default async function SettingsPage({
                       <input type="checkbox" name="is_active" defaultChecked={user.is_active} />
                       Active
                     </label>
-                    <Button type="submit" variant="outline">
-                      Save Access
-                    </Button>
+                    <FormSubmitButton variant="outline" idleLabel="Save Access" pendingLabel="Saving access..." />
                   </div>
                 </form>
 
@@ -492,9 +490,7 @@ export default async function SettingsPage({
                       <input type="checkbox" name="must_change_password" defaultChecked={user.must_change_password} />
                       Force password change on next login
                     </label>
-                    <Button type="submit" variant="secondary">
-                      Reset Password
-                    </Button>
+                    <FormSubmitButton variant="secondary" idleLabel="Reset Password" pendingLabel="Resetting..." />
                   </div>
                 </form>
 
@@ -537,9 +533,12 @@ export default async function SettingsPage({
                 defaultValue={(keywordMap.get(category.id) ?? []).join(", ")}
                 placeholder="keyword1, keyword2, keyword3"
               />
-              <Button type="submit" size="sm" className="mt-2">
-                Save {category.name} Keywords
-              </Button>
+              <FormSubmitButton
+                size="sm"
+                className="mt-2"
+                idleLabel={`Save ${category.name} Keywords`}
+                pendingLabel="Saving keywords..."
+              />
             </form>
           ))}
         </CardContent>
@@ -561,7 +560,7 @@ export default async function SettingsPage({
               <Input name="ai" type="number" step="0.01" min="0" max="1" defaultValue={weights.ai} required />
             </div>
             <div className="self-end">
-              <Button type="submit">Save Weights</Button>
+              <FormSubmitButton idleLabel="Save Weights" pendingLabel="Saving weights..." />
             </div>
           </form>
         </CardContent>
@@ -583,7 +582,7 @@ export default async function SettingsPage({
               <Input name="limit" type="number" min={1} max={200} defaultValue={60} required />
             </div>
             <div className="self-end">
-              <Button type="submit">Run Recheck</Button>
+              <FormSubmitButton idleLabel="Run Recheck" pendingLabel="Running recheck..." />
             </div>
           </form>
         </CardContent>
@@ -605,7 +604,7 @@ export default async function SettingsPage({
               <Input name="limit" type="number" min={1} max={300} defaultValue={60} required />
             </div>
             <div className="self-end">
-              <Button type="submit">Generate Follow-ups</Button>
+              <FormSubmitButton idleLabel="Generate Follow-ups" pendingLabel="Generating..." />
             </div>
           </form>
         </CardContent>
@@ -623,9 +622,7 @@ export default async function SettingsPage({
               <Input name="limit" type="number" min={1} max={1000} defaultValue={200} required />
             </div>
             <div className="self-end">
-              <Button type="submit" variant="secondary">
-                Run Merge
-              </Button>
+              <FormSubmitButton variant="secondary" idleLabel="Run Merge" pendingLabel="Merging..." />
             </div>
           </form>
         </CardContent>
@@ -638,9 +635,7 @@ export default async function SettingsPage({
         </CardHeader>
         <CardContent>
           <form action={runNightlyAction}>
-            <Button type="submit" variant="outline">
-              Run Full Nightly Now
-            </Button>
+            <FormSubmitButton variant="outline" idleLabel="Run Full Nightly Now" pendingLabel="Running nightly..." />
           </form>
         </CardContent>
       </Card>

@@ -1,8 +1,8 @@
 "use client";
 
 import { type FormEvent, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 export function ConfirmActionForm({
   action,
@@ -52,9 +52,13 @@ export function ConfirmActionForm({
         {Object.entries(fields).map(([key, value]) => (
           <input key={key} type="hidden" name={key} value={value} />
         ))}
-        <Button type="submit" variant={buttonVariant} size={buttonSize} className={buttonClassName}>
-          {buttonLabel}
-        </Button>
+        <FormSubmitButton
+          variant={buttonVariant}
+          size={buttonSize}
+          className={buttonClassName}
+          idleLabel={buttonLabel}
+          pendingLabel="Working..."
+        />
       </form>
 
       <ConfirmDialog

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -483,16 +483,16 @@ export function AddLocationForm({
         </>
       )}
 
-      <Button
-        type="submit"
+      <FormSubmitButton
         disabled={
           mode === "manual"
             ? !manualReady || countriesLoading || regionsLoading || citiesLoading || (regions.length > 0 && !regionCode) || (cities.length > 0 && !cityCode)
             : false
         }
+        idleLabel="Save Location"
+        pendingLabel="Saving location..."
       >
-        Save Location
-      </Button>
+      </FormSubmitButton>
     </form>
   );
 }

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -249,7 +249,7 @@ export default async function CampaignsPage({
               <Input name="notes" placeholder="Goals, offer, audience nuance..." />
             </div>
             <div className="md:col-span-3">
-              <Button type="submit">Save Campaign</Button>
+              <FormSubmitButton idleLabel="Save Campaign" pendingLabel="Saving campaign..." />
             </div>
           </form>
         </CardContent>
@@ -330,9 +330,7 @@ export default async function CampaignsPage({
               <Input name="notes" placeholder="Use for hotel category in city centers." />
             </div>
             <div className="md:col-span-3">
-              <Button type="submit" variant="outline">
-                Save Playbook
-              </Button>
+              <FormSubmitButton variant="outline" idleLabel="Save Playbook" pendingLabel="Saving playbook..." />
             </div>
           </form>
 
@@ -351,9 +349,7 @@ export default async function CampaignsPage({
                   </div>
                   <div className="flex items-center gap-2">
                     <Input name="campaign_name" placeholder="Optional campaign name override" className="h-9 w-[300px]" />
-                    <Button size="sm" type="submit">
-                      Launch
-                    </Button>
+                    <FormSubmitButton size="sm" idleLabel="Launch" pendingLabel="Launching..." />
                   </div>
                 </div>
               </form>
@@ -391,17 +387,13 @@ export default async function CampaignsPage({
                       <input type="hidden" name="campaign_id" value={campaign.id} />
                       <input type="hidden" name="auto_only" value="true" />
                       <Input name="limit" type="number" min={1} max={500} defaultValue={campaign.daily_send_target} className="h-9 w-24" />
-                      <Button size="sm" type="submit">
-                        Auto Assign
-                      </Button>
+                      <FormSubmitButton size="sm" idleLabel="Auto Assign" pendingLabel="Assigning..." />
                     </form>
                     <form action={runFollowUpAction} className="flex items-center gap-2">
                       <input type="hidden" name="campaign_id" value={campaign.id} />
                       <Input name="days_since_sent" type="number" min={1} max={30} defaultValue={campaign.follow_up_days} className="h-9 w-20" />
                       <Input name="limit" type="number" min={1} max={300} defaultValue={campaign.daily_send_target} className="h-9 w-24" />
-                      <Button size="sm" variant="secondary" type="submit">
-                        Run Follow-up
-                      </Button>
+                      <FormSubmitButton size="sm" variant="secondary" idleLabel="Run Follow-up" pendingLabel="Running..." />
                     </form>
                     <form action={updateStatusAction} className="flex items-center gap-2">
                       <input type="hidden" name="campaign_id" value={campaign.id} />
@@ -410,9 +402,7 @@ export default async function CampaignsPage({
                         <option value="PAUSED">PAUSED</option>
                         <option value="ARCHIVED">ARCHIVED</option>
                       </Select>
-                      <Button size="sm" variant="outline" type="submit">
-                        Update
-                      </Button>
+                      <FormSubmitButton size="sm" variant="outline" idleLabel="Update" pendingLabel="Updating..." />
                     </form>
                   </div>
                 </div>
@@ -439,9 +429,7 @@ export default async function CampaignsPage({
                   </option>
                 ))}
               </Select>
-              <Button type="submit" variant="outline">
-                Apply
-              </Button>
+              <FormSubmitButton variant="outline" idleLabel="Apply" pendingLabel="Applying..." />
             </form>
           </div>
 

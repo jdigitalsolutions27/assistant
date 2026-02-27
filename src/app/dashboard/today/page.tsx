@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { TodayQueueClient } from "@/components/dashboard/today-queue-client";
 import { getCampaigns, getTodayQueueItems, listFollowUpCandidates } from "@/lib/services/data-service";
 import { generateFollowUpDrafts } from "@/lib/services/maintenance-service";
@@ -71,12 +71,13 @@ export default async function TodayPage({
                 ))}
               </select>
             </div>
-            <button
+            <FormSubmitButton
               type="submit"
+              variant="outline"
               className="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
-            >
-              Apply
-            </button>
+              idleLabel="Apply"
+              pendingLabel="Applying..."
+            />
           </form>
         </CardContent>
       </Card>
@@ -121,7 +122,7 @@ export default async function TodayPage({
               />
             </div>
             <div className="self-end">
-              <Button type="submit">Generate Follow-ups</Button>
+              <FormSubmitButton idleLabel="Generate Follow-ups" pendingLabel="Generating..." />
             </div>
           </form>
         </CardContent>

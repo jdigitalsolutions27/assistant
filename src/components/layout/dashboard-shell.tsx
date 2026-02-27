@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Menu, X } from "lucide-react";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -88,12 +89,12 @@ export function DashboardShell({
           </p>
 
           <form action={logoutAction} className="mt-auto pt-5">
-            <button
-              type="submit"
+            <FormSubmitButton
+              variant="outline"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Logout
-            </button>
+              idleLabel="Logout"
+              pendingLabel="Logging out..."
+            />
           </form>
         </aside>
       </div>
@@ -138,12 +139,12 @@ export function DashboardShell({
             Signed in as {displayName} ({role})
           </p>
           <form action={logoutAction} className="mt-4 md:mt-8">
-            <button
-              type="submit"
+            <FormSubmitButton
+              variant="outline"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Logout
-            </button>
+              idleLabel="Logout"
+              pendingLabel="Logging out..."
+            />
           </form>
         </aside>
 

@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -127,7 +127,7 @@ export default async function TemplatesPage({
               <Label>Template Text</Label>
               <Textarea name="template_text" required placeholder="Hi, this is Jay from J-Digital Solutions..." />
             </div>
-            <Button type="submit">Save Template</Button>
+            <FormSubmitButton idleLabel="Save Template" pendingLabel="Saving template..." />
           </form>
         </CardContent>
       </Card>

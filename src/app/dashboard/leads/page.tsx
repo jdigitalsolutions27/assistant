@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -202,7 +203,7 @@ export default async function LeadsPage({
               defaultValue={typeof params.min_score === "string" ? params.min_score : ""}
               placeholder="Min score"
             />
-            <Button type="submit">Apply</Button>
+            <FormSubmitButton idleLabel="Apply" pendingLabel="Applying..." />
           </form>
         </CardContent>
       </Card>
@@ -272,7 +273,7 @@ export default async function LeadsPage({
               </Select>
             </div>
             <div className="md:col-span-2">
-              <Button type="submit">Add Lead</Button>
+              <FormSubmitButton idleLabel="Add Lead" pendingLabel="Adding lead..." />
             </div>
           </form>
         </CardContent>
