@@ -384,6 +384,38 @@ function matchesOfferMode(row: PreviewRow, offerMode: OfferMode): boolean {
   return hasWebsite;
 }
 
+async function selectStrictFacebookLeads(rows: PreviewRow[], maxResults: number): Promise<{
+  selected: PreviewRow[];
+  filteredOutByFacebook: number;
+}> {
+  if (!rows.length || maxResults <= 0) {
+    return { selected: [], filteredOutByFacebook: rows.length };
+  }
+
+  const scanCap = Math.min(rows.length, Math.max(maxResults * 4, 180));
+  const scanPool = rows.slice(0, scanCap);
+  const withoutFacebook = scanPool.filter((row) => !row.facebook_url && Boolean(row.website_url));
+  const websiteEnriched = withoutFacebook.length > 0 ? await mapWithConcurrency(withoutFacebook, enrichPreviewRow, 6) : [];
+  const enrichedByKey = new Map(
+    websiteEnriched.map((row) => [
+      `${row.place_id ?? ""}|${row.business_name ?? ""}|${row.address ?? ""}|${row.website_url ?? ""}`,
+      row,
+    ]),
+  );
+
+  const resolved = scanPool.map((row) => {
+    if (row.facebook_url || !row.website_url) return row;
+    const key = `${row.place_id ?? ""}|${row.business_name ?? ""}|${row.address ?? ""}|${row.website_url ?? ""}`;
+    return enrichedByKey.get(key) ?? row;
+  });
+
+  const selected = resolved.filter((row) => Boolean(row.facebook_url)).slice(0, maxResults);
+  return {
+    selected,
+    filteredOutByFacebook: Math.max(0, scanPool.length - resolved.filter((row) => Boolean(row.facebook_url)).length),
+  };
+}
+
 export async function POST(request: NextRequest) {
   const guard = await enforceApiGuards(request, { max: 14, windowMs: 60_000, bucket: "places-search", roles: ["ADMIN", "AGENT"] });
   if (guard) return guard;
@@ -401,6 +433,7 @@ export async function POST(request: NextRequest) {
     const categoryGuard = ensureCategoryAccess(user, payload.category_id);
     if (categoryGuard) return categoryGuard;
     const effectiveOfferMode: OfferMode = user.role === "ADMIN" ? payload.offer_mode : "all";
+    const requireFacebook = user.role === "ADMIN" ? payload.require_facebook : false;
     if (user.role === "AGENT" && payload.import_leads) {
       return NextResponse.json({ error: "Forbidden: agents cannot import leads." }, { status: 403 });
     }
@@ -470,7 +503,10 @@ export async function POST(request: NextRequest) {
           );
     const locationScoped = relaxedMatched.length > 0 ? relaxedMatched : ranked;
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
-    const scoped = offerScoped.slice(0, payload.max_results);
+    const strictFacebook = requireFacebook
+      ? await selectStrictFacebookLeads(offerScoped, payload.max_results)
+      : { selected: offerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0 };
+    const scoped = strictFacebook.selected;
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys = await getUserMarkedProspectingKeys({
       user_id: user.id,
@@ -484,9 +520,11 @@ export async function POST(request: NextRequest) {
         results: scoped,
         marked_sent_keys: markedSentKeys,
         offer_mode: effectiveOfferMode,
+        require_facebook: requireFacebook,
         imported: 0,
         filtered_out: Math.max(0, locationScoped.length - scoped.length),
         filtered_out_by_offer_mode: Math.max(0, locationScoped.length - offerScoped.length),
+        filtered_out_by_facebook: strictFacebook.filteredOutByFacebook,
         generated_at: new Date().toISOString(),
       });
     }
@@ -539,8 +577,10 @@ export async function POST(request: NextRequest) {
       results: enriched,
       marked_sent_keys: markedSentKeys,
       offer_mode: effectiveOfferMode,
+      require_facebook: requireFacebook,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
+      filtered_out_by_facebook: strictFacebook.filteredOutByFacebook,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {

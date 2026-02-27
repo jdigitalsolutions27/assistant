@@ -180,6 +180,7 @@ export function ProspectingClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [results, setResults] = useState<PlacePreview[]>([]);
   const [offerMode, setOfferMode] = useState<OfferMode>(agentMode ? "all" : "launch");
+  const [requireFacebook, setRequireFacebook] = useState(true);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [batchLanguage, setBatchLanguage] = useState<MessageLanguage>("Taglish");
   const [batchTone, setBatchTone] = useState<MessageTone>("Soft");
@@ -328,9 +329,11 @@ export function ProspectingClient({
         results?: PlacePreview[];
         marked_sent_keys?: string[];
         offer_mode?: OfferMode;
+        require_facebook?: boolean;
         imported?: number;
         skipped_duplicates?: number;
         filtered_out_by_offer_mode?: number;
+        filtered_out_by_facebook?: number;
         error?: string;
       }>("/api/ingestion/google-places", {
         method: "POST",
@@ -340,6 +343,7 @@ export function ProspectingClient({
           location_id: locationId,
           keywords: currentKeywords.length ? currentKeywords : ["business"],
           offer_mode: effectiveOfferMode,
+          require_facebook: agentMode ? false : requireFacebook,
           import_leads: shouldImport,
           max_results: maxResults,
         }),
@@ -356,6 +360,10 @@ export function ProspectingClient({
       if (shouldImport) {
         setMessage(`Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`);
       } else if (previewRows.length === 0) {
+        if (!agentMode && requireFacebook) {
+          setMessage("No Facebook-contactable leads found for this search. Try broader keywords or disable Require Facebook.");
+          return;
+        }
         if (effectiveOfferMode === "launch") {
           setMessage("No no-website leads found for this location and keywords. Try different keywords or switch Offer Mode.");
         } else if (effectiveOfferMode === "rebuild") {
@@ -363,6 +371,8 @@ export function ProspectingClient({
         } else {
           setMessage("No leads found for this location and keywords.");
         }
+      } else if (!agentMode && requireFacebook && (payload.filtered_out_by_facebook ?? 0) > 0) {
+        setMessage(`Facebook strict mode is on. ${payload.filtered_out_by_facebook} listings were filtered out because no Facebook page was verified.`);
       } else if ((payload.filtered_out_by_offer_mode ?? 0) > 0) {
         setMessage(`Showing ${effectiveOfferMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`);
       }
@@ -786,6 +796,13 @@ export function ProspectingClient({
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Offer Mode controls accuracy: Launch returns businesses without websites; Rebuild returns businesses with websites only.
               </p>
+              <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-2 text-xs text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                <input type="checkbox" checked={requireFacebook} onChange={(event) => setRequireFacebook(event.target.checked)} />
+                Require Facebook (strict)
+              </label>
+              <p className="text-xs text-slate-500 dark:text-slate-300">
+                When enabled, only leads with verified Facebook page links are shown.
+              </p>
             </>
           ) : null}
 
@@ -1034,6 +1051,9 @@ export function ProspectingClient({
                     <p className="text-[11px] text-slate-500 dark:text-slate-300">
                       Contact confidence: {row.contact_verification?.overall_score ?? 0}/100
                     </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-300">
+                      Facebook confidence: {row.contact_verification?.facebook_confidence ?? "none"}
+                    </p>
                   </div>
 
                   <div className="mt-3 grid gap-2">
@@ -1186,6 +1206,9 @@ export function ProspectingClient({
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{row.email ?? (row.website_url && !row.contact_checked ? "Checking email..." : "No email")}</p>
                         <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
                           Contact confidence: {row.contact_verification?.overall_score ?? 0}/100
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
+                          Facebook confidence: {row.contact_verification?.facebook_confidence ?? "none"}
                         </p>
                       </TableCell>
                       <TableCell className="min-w-[240px] space-y-1">
