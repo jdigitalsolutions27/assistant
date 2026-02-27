@@ -89,6 +89,14 @@ function computePreviewFitScore(row: PlacePreview): number {
   return Math.max(0, Math.min(100, score));
 }
 
+function fitScoreClass(passed: boolean): string {
+  return passed ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300";
+}
+
+function generatedStatusClass(eligible: boolean): string {
+  return eligible ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300";
+}
+
 export function ProspectingClient({
   categories,
   locations,
@@ -830,7 +838,7 @@ export function ProspectingClient({
             {enriching ? ` Enriching contacts ${enrichProgress.done}/${enrichProgress.total}...` : ""}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 pb-[calc(12.5rem+env(safe-area-inset-bottom))] lg:pb-4">
+        <CardContent className="space-y-4 pb-[calc(11.25rem+env(safe-area-inset-bottom))] lg:pb-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/40">
               <p className="text-xs text-slate-600 dark:text-slate-300">With Website</p>
@@ -847,7 +855,7 @@ export function ProspectingClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={toggleSelectPage} disabled={paginatedResults.length === 0}>
+            <Button variant="outline" className="h-10" onClick={toggleSelectPage} disabled={paginatedResults.length === 0}>
               Select / Unselect Page
             </Button>
             {agentMode ? (
@@ -860,16 +868,16 @@ export function ProspectingClient({
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-            <Button size="sm" variant={mobileFilter === "all" ? "default" : "outline"} onClick={() => setMobileFilter("all")}>
+            <Button size="sm" className="h-9 whitespace-nowrap" variant={mobileFilter === "all" ? "default" : "outline"} onClick={() => setMobileFilter("all")}>
               All ({paginatedResults.length})
             </Button>
-            <Button size="sm" variant={mobileFilter === "passed" ? "default" : "outline"} onClick={() => setMobileFilter("passed")}>
+            <Button size="sm" className="h-9 whitespace-nowrap" variant={mobileFilter === "passed" ? "default" : "outline"} onClick={() => setMobileFilter("passed")}>
               Passed
             </Button>
-            <Button size="sm" variant={mobileFilter === "facebook" ? "default" : "outline"} onClick={() => setMobileFilter("facebook")}>
+            <Button size="sm" className="h-9 whitespace-nowrap" variant={mobileFilter === "facebook" ? "default" : "outline"} onClick={() => setMobileFilter("facebook")}>
               With Facebook
             </Button>
-            <Button size="sm" variant={mobileFilter === "email" ? "default" : "outline"} onClick={() => setMobileFilter("email")}>
+            <Button size="sm" className="h-9 whitespace-nowrap" variant={mobileFilter === "email" ? "default" : "outline"} onClick={() => setMobileFilter("email")}>
               With Email
             </Button>
           </div>
@@ -893,7 +901,7 @@ export function ProspectingClient({
               return (
                 <div
                   key={row.place_id ?? `${row.business_name}-${idx}`}
-                  className={`rounded-lg border p-3 ${
+                  className={`rounded-xl border p-3.5 ${
                     isSelected
                       ? "border-blue-500 bg-blue-50/50 dark:border-blue-400 dark:bg-blue-950/20"
                       : "border-slate-200 bg-white/70 dark:border-slate-700 dark:bg-slate-900/50"
@@ -905,24 +913,24 @@ export function ProspectingClient({
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Listing #{absoluteIndex + 1}</p>
                       {isMarkedSent ? <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Marked sent by you</p> : null}
                       {generated ? (
-                        <p className={`mt-1 text-xs font-medium ${generated.eligible ? "text-emerald-700" : "text-amber-700"}`}>
+                        <p className={`mt-1 text-xs font-medium ${generatedStatusClass(generated.eligible)}`}>
                           {generated.eligible ? "Draft generated" : "Blocked by fit gate"}
                         </p>
                       ) : null}
                     </button>
                     <div className="text-right">
-                      <p className={`text-lg font-semibold ${fitPassed ? "text-emerald-700" : "text-amber-700"}`}>{fitScore}</p>
+                      <p className={`text-xl font-semibold ${fitScoreClass(fitPassed)}`}>{fitScore}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-300">{fitPassed ? "Passed" : "Review first"}</p>
                     </div>
                   </div>
 
-                  <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{row.address ?? "-"}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{row.address ?? "-"}</p>
 
-                  <div className="mt-2 space-y-1 text-xs text-slate-700 dark:text-slate-200">
+                  <div className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
                     <p>
                       <span className="font-medium">Phone:</span> {row.phone ?? "-"}
                     </p>
-                    <p className="break-words">
+                    <p className="break-all">
                       <span className="font-medium">Email:</span>{" "}
                       {row.email ?? (row.website_url && !row.contact_checked ? "Checking..." : "No email")}
                     </p>
@@ -931,15 +939,15 @@ export function ProspectingClient({
                     </p>
                   </div>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-3 grid gap-2">
                     {row.website_url ? (
                       <a
                         href={row.website_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        className="inline-flex min-h-9 items-center rounded-md border border-emerald-300 bg-emerald-100 px-2.5 py-1.5 text-sm font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                       >
-                        Website available
+                        Website: {compactUrlLabel(row.website_url)}
                       </a>
                     ) : null}
                     {row.facebook_url ? (
@@ -947,9 +955,9 @@ export function ProspectingClient({
                         href={row.facebook_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center rounded-md border border-sky-300 bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-800 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300"
+                        className="inline-flex min-h-9 items-center rounded-md border border-sky-300 bg-sky-100 px-2.5 py-1.5 text-sm font-semibold text-sky-800 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300"
                       >
-                        Facebook available
+                        Facebook: {compactUrlLabel(row.facebook_url)}
                       </a>
                     ) : null}
                   </div>
@@ -965,7 +973,7 @@ export function ProspectingClient({
                       <Button
                         variant={isMarkedSent ? "secondary" : "outline"}
                         size="sm"
-                        className="w-full"
+                        className="h-10 w-full"
                         onClick={() => void markPreviewRowSent(row)}
                         disabled={isMarkedSent || markingSentKey === rowKey}
                       >
@@ -1045,13 +1053,13 @@ export function ProspectingClient({
                           ) : null}
                         </div>
                         {generated ? (
-                          <p className={`mt-1 text-xs font-medium ${generated.eligible ? "text-emerald-700" : "text-amber-700"}`}>
+                          <p className={`mt-1 text-xs font-medium ${generatedStatusClass(generated.eligible)}`}>
                             {generated.eligible ? "Draft generated" : "Blocked by fit gate"}
                           </p>
                         ) : null}
                       </TableCell>
                       <TableCell className="min-w-[130px]">
-                        <p className={`text-sm font-semibold ${fitPassed ? "text-emerald-700" : "text-amber-700"}`}>{fitScore}</p>
+                        <p className={`text-sm font-semibold ${fitScoreClass(fitPassed)}`}>{fitScore}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-300">{fitPassed ? "Passed" : "Review first"}</p>
                       </TableCell>
                       <TableCell className="min-w-[280px]">
@@ -1119,33 +1127,30 @@ export function ProspectingClient({
           </div>
 
           {visibleResults.length > 0 ? (
-            <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+6.8rem)] z-30 rounded-xl border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-600 dark:text-slate-300">Page {safeCurrentPage} of {totalPages}</p>
+            <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Page {safeCurrentPage} of {totalPages}
+                </p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => goToPage(safeCurrentPage - 1)} disabled={safeCurrentPage <= 1 || loading}>
+                  <Button variant="outline" size="sm" className="h-9" onClick={() => goToPage(safeCurrentPage - 1)} disabled={safeCurrentPage <= 1 || loading}>
                     Prev
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => goToPage(safeCurrentPage + 1)} disabled={safeCurrentPage >= totalPages || loading}>
+                  <Button variant="outline" size="sm" className="h-9" onClick={() => goToPage(safeCurrentPage + 1)} disabled={safeCurrentPage >= totalPages || loading}>
                     Next
                   </Button>
                 </div>
               </div>
-            </div>
-          ) : null}
-
-          {visibleResults.length > 0 ? (
-            <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 rounded-xl border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur lg:hidden dark:border-slate-700 dark:bg-slate-900/95">
-              <p className="text-xs text-slate-600 dark:text-slate-300">
+              <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
                 Selected {selectedGateStats.selected} | Passed {selectedGateStats.passed} | Blocked {selectedGateStats.blocked}
               </p>
               <div className="mt-2 flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" onClick={clearSelection} disabled={selectedGateStats.selected === 0}>
+                <Button variant="outline" size="sm" className="h-10 flex-1" onClick={clearSelection} disabled={selectedGateStats.selected === 0}>
                   Clear
                 </Button>
                 <Button
                   size="sm"
-                  className="flex-[1.4]"
+                  className="h-10 flex-[1.4]"
                   onClick={generateForSelected}
                   disabled={batchLoading || selectedGateStats.selected === 0 || noAgentCategoryAssigned}
                 >
@@ -1182,7 +1187,7 @@ export function ProspectingClient({
               <div key={item.match_key} className="rounded-md border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-slate-900 dark:text-slate-100">{item.business_name ?? "Unnamed"}</p>
-                  <p className={`text-xs font-semibold ${item.eligible ? "text-emerald-700" : "text-amber-700"}`}>
+                  <p className={`text-xs font-semibold ${generatedStatusClass(item.eligible)}`}>
                     Fit {item.fit_score} {item.eligible ? "(Passed)" : "(Blocked)"}
                   </p>
                 </div>
