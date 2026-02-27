@@ -460,15 +460,12 @@ export async function POST(request: NextRequest) {
           );
     const scoped = (relaxedMatched.length > 0 ? relaxedMatched : ranked).slice(0, payload.max_results);
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
-    const markedSentKeys =
-      user.role === "AGENT"
-        ? await getUserMarkedProspectingKeys({
-            user_id: user.id,
-            category_id: payload.category_id,
-            location_id: payload.location_id,
-            match_keys: previewMatchKeys,
-          })
-        : [];
+    const markedSentKeys = await getUserMarkedProspectingKeys({
+      user_id: user.id,
+      category_id: payload.category_id,
+      location_id: payload.location_id,
+      match_keys: previewMatchKeys,
+    });
 
     if (!payload.import_leads) {
       return NextResponse.json({

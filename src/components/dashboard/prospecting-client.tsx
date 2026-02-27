@@ -148,7 +148,7 @@ export function ProspectingClient({
   const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
   const [mobileFilter, setMobileFilter] = useState<MobilePreviewFilter>("all");
   const [markedSentKeys, setMarkedSentKeys] = useState<Set<string>>(new Set());
-  const [hideMarkedSent, setHideMarkedSent] = useState(agentMode);
+  const [hideMarkedSent, setHideMarkedSent] = useState(true);
   const [markingSentKey, setMarkingSentKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const enrichRunRef = useRef(0);
@@ -178,9 +178,9 @@ export function ProspectingClient({
   );
 
   const visibleResults = useMemo(() => {
-    if (!agentMode || !hideMarkedSent) return results;
+    if (!hideMarkedSent) return results;
     return results.filter((row) => !markedSentKeys.has(buildProspectingMatchKey(row)));
-  }, [results, agentMode, hideMarkedSent, markedSentKeys]);
+  }, [results, hideMarkedSent, markedSentKeys]);
   const hiddenMarkedCount = Math.max(0, results.length - visibleResults.length);
   const totalPages = Math.max(1, Math.ceil(visibleResults.length / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -858,12 +858,10 @@ export function ProspectingClient({
             <Button variant="outline" className="h-10" onClick={toggleSelectPage} disabled={paginatedResults.length === 0}>
               Select / Unselect Page
             </Button>
-            {agentMode ? (
-              <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 dark:border-slate-700 dark:text-slate-200">
-                <input type="checkbox" checked={hideMarkedSent} onChange={(event) => setHideMarkedSent(event.target.checked)} />
-                Hide marked sent
-              </label>
-            ) : null}
+            <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 dark:border-slate-700 dark:text-slate-200">
+              <input type="checkbox" checked={hideMarkedSent} onChange={(event) => setHideMarkedSent(event.target.checked)} />
+              Hide marked sent
+            </label>
             <p className="text-xs text-slate-600 dark:text-slate-300">Tip: Select the best leads then click Generate for Selected.</p>
           </div>
 
@@ -962,24 +960,22 @@ export function ProspectingClient({
                     ) : null}
                   </div>
 
-                  <div className={`mt-3 grid gap-2 ${agentMode ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     <Button variant={isSelected ? "secondary" : "outline"} size="sm" className="w-full" onClick={() => toggleRowSelection(row)}>
                       {isSelected ? "Selected" : "Select"}
                     </Button>
                     <Button variant="outline" size="sm" className="w-full" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
                       Generate 1
                     </Button>
-                    {agentMode ? (
-                      <Button
-                        variant={isMarkedSent ? "secondary" : "outline"}
-                        size="sm"
-                        className="h-10 w-full"
-                        onClick={() => void markPreviewRowSent(row)}
-                        disabled={isMarkedSent || markingSentKey === rowKey}
-                      >
-                        {isMarkedSent ? "Sent" : markingSentKey === rowKey ? "Saving..." : "Mark Sent"}
-                      </Button>
-                    ) : null}
+                    <Button
+                      variant={isMarkedSent ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-10 w-full"
+                      onClick={() => void markPreviewRowSent(row)}
+                      disabled={isMarkedSent || markingSentKey === rowKey}
+                    >
+                      {isMarkedSent ? "Sent" : markingSentKey === rowKey ? "Saving..." : "Mark Sent"}
+                    </Button>
                   </div>
                 </div>
               );
@@ -1107,16 +1103,14 @@ export function ProspectingClient({
                           <Button variant="outline" size="sm" onClick={() => void generateForRow(row)} disabled={batchLoading || noAgentCategoryAssigned}>
                             Generate 1
                           </Button>
-                          {agentMode ? (
-                            <Button
-                              variant={isMarkedSent ? "secondary" : "outline"}
-                              size="sm"
-                              onClick={() => void markPreviewRowSent(row)}
-                              disabled={isMarkedSent || markingSentKey === rowKey}
-                            >
-                              {isMarkedSent ? "Sent" : markingSentKey === rowKey ? "Saving..." : "Mark Sent"}
-                            </Button>
-                          ) : null}
+                          <Button
+                            variant={isMarkedSent ? "secondary" : "outline"}
+                            size="sm"
+                            onClick={() => void markPreviewRowSent(row)}
+                            disabled={isMarkedSent || markingSentKey === rowKey}
+                          >
+                            {isMarkedSent ? "Sent" : markingSentKey === rowKey ? "Saving..." : "Mark Sent"}
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
