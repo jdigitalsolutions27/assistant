@@ -1,7 +1,7 @@
 import { City, Country, State } from "country-state-city";
 import { NextRequest, NextResponse } from "next/server";
-import { getMunicipalitiesByProvince, getProvincesByRegionName, getRegions } from "philippine-administrative-divisions";
 import { enforceApiGuards, jsonError } from "@/lib/api-helpers";
+import philippinesAdminRaw from "@/lib/data/philippines-admin.json";
 
 export const runtime = "nodejs";
 
@@ -10,12 +10,22 @@ type GeoItem = {
   name: string;
 };
 
+type PhilippinesProvince = {
+  code: string;
+  name: string;
+  cities: string[];
+};
+
+type PhilippinesRegion = {
+  code: string;
+  name: string;
+  provinces: PhilippinesProvince[];
+};
+
+const philippinesAdmin = philippinesAdminRaw as PhilippinesRegion[];
+
 function sortByName(items: GeoItem[]): GeoItem[] {
   return items.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function ensureList(value: string[] | boolean | undefined | null): string[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function titleCaseToken(token: string): string {
@@ -83,9 +93,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === "ph_regions") {
-      const items = getRegions().map((item) => ({
-        code: item,
-        name: formatPhRegion(item),
+      const items = philippinesAdmin.map((item) => ({
+        code: item.code,
+        name: formatPhRegion(item.name),
       }));
       return NextResponse.json({ items: sortByName(items) });
     }
@@ -93,9 +103,10 @@ export async function GET(request: NextRequest) {
     if (type === "ph_provinces") {
       const regionName = request.nextUrl.searchParams.get("regionName")?.trim().toUpperCase() ?? "";
       if (!regionName) return NextResponse.json({ error: "regionName is required." }, { status: 400 });
-      const items = ensureList(getProvincesByRegionName(regionName)).map((item) => ({
-        code: item,
-        name: formatPhProvince(item),
+      const region = philippinesAdmin.find((item) => item.code === regionName);
+      const items = (region?.provinces ?? []).map((item) => ({
+        code: item.code,
+        name: formatPhProvince(item.name),
       }));
       return NextResponse.json({ items: sortByName(items) });
     }
@@ -103,9 +114,8 @@ export async function GET(request: NextRequest) {
     if (type === "ph_cities") {
       const provinceName = request.nextUrl.searchParams.get("provinceName")?.trim().toUpperCase() ?? "";
       if (!provinceName) return NextResponse.json({ error: "provinceName is required." }, { status: 400 });
-
-      const source =
-        provinceName === "NATIONAL CAPITAL REGION - MANILA" ? ["CITY OF MANILA"] : ensureList(getMunicipalitiesByProvince(provinceName));
+      const province = philippinesAdmin.flatMap((item) => item.provinces).find((item) => item.code === provinceName);
+      const source = provinceName === "NATIONAL CAPITAL REGION - MANILA" ? ["CITY OF MANILA"] : (province?.cities ?? []);
       const items = source.map((item) => ({
         code: item,
         name: formatPhMunicipality(item),
