@@ -324,7 +324,7 @@ export default async function SettingsPage({
           <CardHeader>
             <CardTitle>Add Location</CardTitle>
             <CardDescription>
-              Use Region VIII quick add for local targeting, or switch to International / Manual Add for global locations.
+              Use Philippines quick add for accurate region, province, and city targeting, or switch to International / Manual Add for global locations.
             </CardDescription>
           </CardHeader>
           <CardContent>

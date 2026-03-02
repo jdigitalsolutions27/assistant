@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 
-const REGION_NAME = "Region VIII";
 const COUNTRY_NAME = "Philippines";
+const REGION_NAME = "Region VIII";
+const REGION_VIII_CODE = "REGION VIII";
 
 const REGION_VIII_PROVINCES: Record<string, string[]> = {
   Biliran: ["Almeria", "Biliran", "Cabucgayan", "Caibiran", "Culaba", "Kawayan", "Maripipi", "Naval"],
@@ -16,7 +17,7 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "Balangiga",
     "Balangkayan",
     "Can-Avid",
-    "City of Borongan",
+    "Borongan City",
     "Dolores",
     "General Macarthur",
     "Giporlos",
@@ -34,7 +35,7 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "San Julian",
     "San Policarpo",
     "Sulat",
-    "Taft",
+    "Taft"
   ],
   Leyte: [
     "Abuyog",
@@ -47,8 +48,8 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "Calubian",
     "Capoocan",
     "Carigara",
-    "City of Baybay",
-    "City of Tacloban",
+    "Baybay City",
+    "Tacloban City",
     "Dagami",
     "Dulag",
     "Hilongos",
@@ -63,7 +64,7 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "Leyte",
     "Macarthur",
     "Mahaplag",
-    "Matag-Ob",
+    "Matag-ob",
     "Matalom",
     "Mayorga",
     "Merida",
@@ -79,7 +80,7 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "Tanauan",
     "Tolosa",
     "Tunga",
-    "Villaba",
+    "Villaba"
   ],
   "Northern Samar": [
     "Allen",
@@ -93,7 +94,7 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "Lapinig",
     "Las Navas",
     "Lavezares",
-    "Lope De Vega",
+    "Lope de Vega",
     "Mapanas",
     "Mondragon",
     "Palapag",
@@ -105,14 +106,14 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "San Roque",
     "San Vicente",
     "Silvino Lobos",
-    "Victoria",
+    "Victoria"
   ],
   Samar: [
     "Almagro",
     "Basey",
     "Calbiga",
-    "City of Calbayog",
-    "City of Catbalogan",
+    "Calbayog City",
+    "Catbalogan City",
     "Daram",
     "Gandara",
     "Hinabangan",
@@ -124,21 +125,21 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "Paranas",
     "Pinabacdao",
     "San Jorge",
-    "San Jose De Buan",
+    "San Jose de Buan",
     "San Sebastian",
     "Santa Margarita",
     "Santa Rita",
-    "Santo Niño",
-    "Tagapul-An",
+    "Santo Nino",
+    "Tagapul-an",
     "Talalora",
     "Tarangnan",
     "Villareal",
-    "Zumarraga",
+    "Zumarraga"
   ],
   "Southern Leyte": [
     "Anahawan",
     "Bontoc",
-    "City of Maasin",
+    "Maasin City",
     "Hinunangan",
     "Hinundayan",
     "Libagon",
@@ -154,11 +155,13 @@ const REGION_VIII_PROVINCES: Record<string, string[]> = {
     "San Ricardo",
     "Silago",
     "Sogod",
-    "Tomas Oppus",
-  ],
+    "Tomas Oppus"
+  ]
 };
 
-const PROVINCES = Object.keys(REGION_VIII_PROVINCES);
+const REGION_VIII_PROVINCE_NAMES = Object.keys(REGION_VIII_PROVINCES);
+
+type QuickMode = "region8" | "philippines" | "manual";
 
 type GeoOption = {
   code: string;
@@ -170,13 +173,6 @@ type GeoResponse = {
   error?: string;
 };
 
-function normalizeLocalityName(value: string): string {
-  if (value.startsWith("City of ")) {
-    return `${value.slice("City of ".length)} City`;
-  }
-  return value;
-}
-
 export function AddLocationForm({
   action,
   allowInternational = false,
@@ -184,8 +180,21 @@ export function AddLocationForm({
   action: (formData: FormData) => void | Promise<void>;
   allowInternational?: boolean;
 }) {
-  const [mode, setMode] = useState<"region8" | "manual">("region8");
-  const [province, setProvince] = useState(PROVINCES[0] ?? "Leyte");
+  const [mode, setMode] = useState<QuickMode>(allowInternational ? "philippines" : "region8");
+  const [region8Province, setRegion8Province] = useState<string>("Leyte");
+  const [region8City, setRegion8City] = useState<string>(REGION_VIII_PROVINCES.Leyte[0] ?? "Tacloban City");
+
+  const [phRegions, setPhRegions] = useState<GeoOption[]>([]);
+  const [phProvinces, setPhProvinces] = useState<GeoOption[]>([]);
+  const [phCities, setPhCities] = useState<GeoOption[]>([]);
+  const [phRegionCode, setPhRegionCode] = useState<string>(REGION_VIII_CODE);
+  const [phProvinceCode, setPhProvinceCode] = useState<string>("");
+  const [phCityCode, setPhCityCode] = useState<string>("");
+  const [phRegionsLoading, setPhRegionsLoading] = useState(false);
+  const [phProvincesLoading, setPhProvincesLoading] = useState(false);
+  const [phCitiesLoading, setPhCitiesLoading] = useState(false);
+  const [phError, setPhError] = useState<string | null>(null);
+
   const [countries, setCountries] = useState<GeoOption[]>([]);
   const [regions, setRegions] = useState<GeoOption[]>([]);
   const [cities, setCities] = useState<GeoOption[]>([]);
@@ -199,11 +208,15 @@ export function AddLocationForm({
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
 
-  const localities = useMemo(() => REGION_VIII_PROVINCES[province] ?? [], [province]);
-  const [locality, setLocality] = useState(localities[0] ?? "");
+  const region8Cities = useMemo(() => REGION_VIII_PROVINCES[region8Province] ?? [], [region8Province]);
+  const region8TargetName = useMemo(() => `${region8City}, ${region8Province}`, [region8City, region8Province]);
 
-  const formattedLocality = normalizeLocalityName(locality);
-  const targetName = `${formattedLocality}, ${province}`;
+  const selectedPhRegion = useMemo(() => phRegions.find((item) => item.code === phRegionCode)?.name ?? REGION_NAME, [phRegions, phRegionCode]);
+  const selectedPhProvince = useMemo(() => phProvinces.find((item) => item.code === phProvinceCode)?.name ?? "", [phProvinces, phProvinceCode]);
+  const selectedPhCity = useMemo(() => phCities.find((item) => item.code === phCityCode)?.name ?? "", [phCities, phCityCode]);
+  const philippinesTargetName = useMemo(() => [selectedPhCity, selectedPhProvince].filter(Boolean).join(", "), [selectedPhCity, selectedPhProvince]);
+  const philippinesReady = Boolean(selectedPhRegion && selectedPhProvince && selectedPhCity);
+
   const selectedCountry = useMemo(() => countries.find((item) => item.code === countryCode)?.name ?? "", [countries, countryCode]);
   const selectedRegion = useMemo(
     () => regions.find((item) => item.code === regionCode)?.name ?? regionFallback.trim(),
@@ -213,11 +226,111 @@ export function AddLocationForm({
   const manualTargetName = useMemo(() => [selectedCity, selectedRegion, selectedCountry].filter(Boolean).join(", "), [selectedCity, selectedRegion, selectedCountry]);
   const manualReady = Boolean(selectedCountry && selectedRegion && manualTargetName);
 
-  function onProvinceChange(nextProvince: string) {
-    setProvince(nextProvince);
-    const nextLocalities = REGION_VIII_PROVINCES[nextProvince] ?? [];
-    setLocality(nextLocalities[0] ?? "");
-  }
+  useEffect(() => {
+    if (!region8Cities.includes(region8City)) {
+      setRegion8City(region8Cities[0] ?? "");
+    }
+  }, [region8Cities, region8City]);
+
+  useEffect(() => {
+    if (!allowInternational || mode !== "philippines" || phRegions.length > 0) return;
+
+    let cancelled = false;
+    async function run() {
+      setPhRegionsLoading(true);
+      setPhError(null);
+      try {
+        const response = await fetch("/api/locations/geo?type=ph_regions", { credentials: "same-origin" });
+        const payload = (await response.json()) as GeoResponse;
+        if (!response.ok) throw new Error(payload.error || "Failed to load Philippine regions.");
+        if (cancelled) return;
+        const items = payload.items ?? [];
+        setPhRegions(items);
+        setPhRegionCode((current) => current || REGION_VIII_CODE || items[0]?.code || "");
+      } catch (error) {
+        if (!cancelled) {
+          setPhError(error instanceof Error ? error.message : "Failed to load Philippine regions.");
+        }
+      } finally {
+        if (!cancelled) setPhRegionsLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowInternational, mode, phRegions.length]);
+
+  useEffect(() => {
+    if (!allowInternational || mode !== "philippines" || !phRegionCode) return;
+
+    let cancelled = false;
+    async function run() {
+      setPhProvincesLoading(true);
+      setPhProvinces([]);
+      setPhProvinceCode("");
+      setPhCities([]);
+      setPhCityCode("");
+      setPhError(null);
+      try {
+        const response = await fetch(`/api/locations/geo?type=ph_provinces&regionName=${encodeURIComponent(phRegionCode)}`, {
+          credentials: "same-origin",
+        });
+        const payload = (await response.json()) as GeoResponse;
+        if (!response.ok) throw new Error(payload.error || "Failed to load provinces.");
+        if (cancelled) return;
+        const items = payload.items ?? [];
+        setPhProvinces(items);
+        setPhProvinceCode(items[0]?.code ?? "");
+      } catch (error) {
+        if (!cancelled) {
+          setPhError(error instanceof Error ? error.message : "Failed to load provinces.");
+        }
+      } finally {
+        if (!cancelled) setPhProvincesLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowInternational, mode, phRegionCode]);
+
+  useEffect(() => {
+    if (!allowInternational || mode !== "philippines" || !phProvinceCode) return;
+
+    let cancelled = false;
+    async function run() {
+      setPhCitiesLoading(true);
+      setPhCities([]);
+      setPhCityCode("");
+      setPhError(null);
+      try {
+        const response = await fetch(`/api/locations/geo?type=ph_cities&provinceName=${encodeURIComponent(phProvinceCode)}`, {
+          credentials: "same-origin",
+        });
+        const payload = (await response.json()) as GeoResponse;
+        if (!response.ok) throw new Error(payload.error || "Failed to load cities and municipalities.");
+        if (cancelled) return;
+        const items = payload.items ?? [];
+        setPhCities(items);
+        setPhCityCode(items[0]?.code ?? "");
+      } catch (error) {
+        if (!cancelled) {
+          setPhError(error instanceof Error ? error.message : "Failed to load cities and municipalities.");
+        }
+      } finally {
+        if (!cancelled) setPhCitiesLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowInternational, mode, phProvinceCode]);
 
   useEffect(() => {
     if (!allowInternational || mode !== "manual" || countries.length > 0) return;
@@ -335,13 +448,20 @@ export function AddLocationForm({
     };
   }, [allowInternational, mode, countryCode, regionCode, regions.length]);
 
+  const submitDisabled =
+    mode === "manual"
+      ? !manualReady || countriesLoading || regionsLoading || citiesLoading || (regions.length > 0 && !regionCode) || (cities.length > 0 && !cityCode)
+      : mode === "philippines"
+        ? !philippinesReady || phRegionsLoading || phProvincesLoading || phCitiesLoading
+        : false;
+
   return (
     <form action={action} className="space-y-3">
       {allowInternational ? (
         <div className="space-y-1">
           <Label>Location Mode</Label>
-          <Select value={mode} onChange={(event) => setMode(event.target.value as "region8" | "manual")}>
-            <option value="region8">Region VIII Quick Add</option>
+          <Select value={mode} onChange={(event) => setMode(event.target.value as QuickMode)}>
+            <option value="philippines">Philippines Quick Add</option>
             <option value="manual">International / Manual Add</option>
           </Select>
         </div>
@@ -367,8 +487,8 @@ export function AddLocationForm({
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <Label>Province</Label>
-              <Select value={province} onChange={(event) => onProvinceChange(event.target.value)}>
-                {PROVINCES.map((provinceName) => (
+              <Select value={region8Province} onChange={(event) => setRegion8Province(event.target.value)}>
+                {REGION_VIII_PROVINCE_NAMES.map((provinceName) => (
                   <option key={provinceName} value={provinceName}>
                     {provinceName}
                   </option>
@@ -377,10 +497,10 @@ export function AddLocationForm({
             </div>
             <div className="space-y-1">
               <Label>City / Municipality</Label>
-              <Select value={locality} onChange={(event) => setLocality(event.target.value)}>
-                {localities.map((localityName) => (
+              <Select value={region8City} onChange={(event) => setRegion8City(event.target.value)}>
+                {region8Cities.map((localityName) => (
                   <option key={localityName} value={localityName}>
-                    {normalizeLocalityName(localityName)}
+                    {localityName}
                   </option>
                 ))}
               </Select>
@@ -389,13 +509,76 @@ export function AddLocationForm({
 
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/40">
             <p className="text-xs text-slate-600 dark:text-slate-300">Target Location Name (auto)</p>
-            <p className="font-semibold text-slate-900 dark:text-slate-100">{targetName}</p>
+            <p className="font-semibold text-slate-900 dark:text-slate-100">{region8TargetName}</p>
           </div>
 
-          <input type="hidden" name="name" value={targetName} />
-          <input type="hidden" name="city" value={formattedLocality} />
+          <input type="hidden" name="name" value={region8TargetName} />
+          <input type="hidden" name="city" value={region8City} />
           <input type="hidden" name="region" value={REGION_NAME} />
           <input type="hidden" name="country" value={COUNTRY_NAME} />
+        </>
+      ) : mode === "philippines" ? (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Country</Label>
+              <Select value={COUNTRY_NAME} disabled>
+                <option value={COUNTRY_NAME}>{COUNTRY_NAME}</option>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Region</Label>
+              <Select value={phRegionCode} onChange={(event) => setPhRegionCode(event.target.value)} disabled={phRegionsLoading}>
+                <option value="">{phRegionsLoading ? "Loading regions..." : "Select region"}</option>
+                {phRegions.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Province</Label>
+              <Select value={phProvinceCode} onChange={(event) => setPhProvinceCode(event.target.value)} disabled={!phRegionCode || phProvincesLoading}>
+                <option value="">{phProvincesLoading ? "Loading provinces..." : "Select province"}</option>
+                {phProvinces.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>City / Municipality</Label>
+              <Select value={phCityCode} onChange={(event) => setPhCityCode(event.target.value)} disabled={!phProvinceCode || phCitiesLoading}>
+                <option value="">{phCitiesLoading ? "Loading cities / municipalities..." : "Select city / municipality"}</option>
+                {phCities.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/40">
+            <p className="text-xs text-slate-600 dark:text-slate-300">Target Location Name (auto)</p>
+            <p className="font-semibold text-slate-900 dark:text-slate-100">{philippinesTargetName || "Select region, province, and city / municipality."}</p>
+          </div>
+
+          <input type="hidden" name="name" value={philippinesTargetName} />
+          <input type="hidden" name="city" value={selectedPhCity} />
+          <input type="hidden" name="region" value={selectedPhRegion} />
+          <input type="hidden" name="country" value={COUNTRY_NAME} />
+
+          {phError ? (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-300">
+              {phError}
+            </p>
+          ) : null}
         </>
       ) : (
         <>
@@ -414,11 +597,7 @@ export function AddLocationForm({
             <div className="space-y-1">
               <Label>Region / State / Province</Label>
               {regions.length > 0 ? (
-                <Select
-                  value={regionCode}
-                  onChange={(event) => setRegionCode(event.target.value)}
-                  disabled={!countryCode || regionsLoading}
-                >
+                <Select value={regionCode} onChange={(event) => setRegionCode(event.target.value)} disabled={!countryCode || regionsLoading}>
                   <option value="">{regionsLoading ? "Loading regions..." : "Select region / state / province"}</option>
                   {regions.map((item) => (
                     <option key={item.code} value={item.code}>
@@ -437,6 +616,7 @@ export function AddLocationForm({
               )}
             </div>
           </div>
+
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <Label>City / Municipality</Label>
@@ -467,14 +647,17 @@ export function AddLocationForm({
               <Input value={manualTargetName} readOnly placeholder="Auto-generated from selected place" />
             </div>
           </div>
+
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800/40">
             <p className="text-xs text-slate-600 dark:text-slate-300">Target Location Name (auto)</p>
             <p className="font-semibold text-slate-900 dark:text-slate-100">{manualTargetName || "Select country, region, and city."}</p>
           </div>
+
           <input type="hidden" name="name" value={manualTargetName} />
           <input type="hidden" name="city" value={selectedCity} />
           <input type="hidden" name="region" value={selectedRegion} />
           <input type="hidden" name="country" value={selectedCountry} />
+
           {manualError ? (
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-300">
               {manualError}
@@ -483,16 +666,7 @@ export function AddLocationForm({
         </>
       )}
 
-      <FormSubmitButton
-        disabled={
-          mode === "manual"
-            ? !manualReady || countriesLoading || regionsLoading || citiesLoading || (regions.length > 0 && !regionCode) || (cities.length > 0 && !cityCode)
-            : false
-        }
-        idleLabel="Save Location"
-        pendingLabel="Saving location..."
-      >
-      </FormSubmitButton>
+      <FormSubmitButton disabled={submitDisabled} idleLabel="Save Location" pendingLabel="Saving location..." />
     </form>
   );
 }
