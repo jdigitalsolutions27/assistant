@@ -373,10 +373,21 @@ async function fetchFoursquareKeywordResults(
 
   const params = new URLSearchParams({
     query: keyword.trim(),
-    near: buildSearchLocationText(location),
     limit: String(Math.min(Math.max(targetCount, 20), 50)),
     fields: "name,location,website,tel,email",
   });
+
+  try {
+    const scope = await resolveGeoapifyPlaceScope(location);
+    if (scope && scope.lat !== null && scope.lon !== null) {
+      params.set("ll", `${scope.lat},${scope.lon}`);
+      params.set("radius", "15000");
+    } else {
+      params.set("near", buildSearchLocationText(location));
+    }
+  } catch {
+    params.set("near", buildSearchLocationText(location));
+  }
 
   const response = await fetch(`https://places-api.foursquare.com/places/search?${params.toString()}`, {
     headers: {
@@ -1234,7 +1245,7 @@ export async function POST(request: NextRequest) {
       ? relaxedMatched.length > 0
         ? relaxedMatched
         : ranked
-      : relaxedMatched;
+      : strictMatched;
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
     const providerScoped =
       providerUsed === "geoapify" ? await enrichTopGeoapifyRows(offerScoped, Math.min(Math.max(payload.max_results, 20), 30)) : offerScoped;
