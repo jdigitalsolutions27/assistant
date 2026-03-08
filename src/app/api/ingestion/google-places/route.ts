@@ -862,6 +862,35 @@ function parseCountryScope(country: string | null): string[] {
   return Array.from(items);
 }
 
+function buildRowLocationHaystack(row: PreviewRow): string {
+  const parts = [row.address];
+  const provider = typeof row.raw_json?.provider === "string" ? row.raw_json.provider : null;
+
+  if (provider === "geoapify") {
+    const properties = row.raw_json?.properties as
+      | {
+          city?: string;
+          state?: string;
+          country?: string;
+        }
+      | undefined;
+    parts.push(properties?.city ?? null, properties?.state ?? null, properties?.country ?? null);
+  }
+
+  if (provider === "foursquare") {
+    const location = row.raw_json?.place as
+      | {
+          location?: {
+            formatted_address?: string;
+          };
+        }
+      | undefined;
+    parts.push(location?.location?.formatted_address ?? null);
+  }
+
+  return normalizeText(parts.filter(Boolean).join(" "));
+}
+
 function isBroadRegionSelection(location: { name: string; city: string | null }): boolean {
   if (location.city) return false;
   const normalized = normalizeText(location.name);
@@ -872,8 +901,8 @@ function matchesSelectedLocation(
   row: PreviewRow,
   location: { name: string; city: string | null; region: string | null; country: string | null },
 ): boolean {
-  const address = normalizeText(row.address);
-  if (!address) return false;
+  const haystack = buildRowLocationHaystack(row);
+  if (!haystack) return false;
 
   if (isBroadRegionSelection(location)) {
     return true;
@@ -881,7 +910,7 @@ function matchesSelectedLocation(
 
   const countryCandidates = parseCountryScope(location.country);
   if (countryCandidates.length > 0) {
-    const countryMatched = countryCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
+    const countryMatched = countryCandidates.some((candidate) => hasTokenAsPhrase(haystack, candidate));
     if (!countryMatched) return false;
   }
 
@@ -890,11 +919,11 @@ function matchesSelectedLocation(
   const localityCandidates = scope.locality.length > 0 ? scope.locality : fallbackCandidates;
   if (localityCandidates.length === 0) return true;
 
-  const localityMatched = localityCandidates.some((candidate) => hasTokenAsPhrase(address, candidate));
+  const localityMatched = localityCandidates.some((candidate) => hasTokenAsPhrase(haystack, candidate));
   if (!localityMatched) return false;
 
   if (scope.province.length > 0) {
-    const provinceMatched = scope.province.some((candidate) => hasTokenAsPhrase(address, candidate));
+    const provinceMatched = scope.province.some((candidate) => hasTokenAsPhrase(haystack, candidate));
     if (!provinceMatched) return false;
   }
 
@@ -907,7 +936,7 @@ function matchesSelectedLocationRelaxed(
 ): boolean {
   if (isBroadRegionSelection(location)) return true;
 
-  const address = normalizeText(row.address);
+  const address = buildRowLocationHaystack(row);
   const business = normalizeText(row.business_name);
   const haystack = `${address} ${business}`.trim();
   if (!haystack) return false;
@@ -1084,7 +1113,11 @@ export async function POST(request: NextRequest) {
               country: location.country,
             }),
           );
-    const locationScoped = relaxedMatched.length > 0 ? relaxedMatched : ranked;
+    const locationScoped = isBroadRegionSelection({ name: location.name, city: location.city })
+      ? relaxedMatched.length > 0
+        ? relaxedMatched
+        : ranked
+      : relaxedMatched;
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
     const providerScoped =
       providerUsed === "geoapify" ? await enrichTopGeoapifyRows(offerScoped, Math.min(Math.max(payload.max_results, 20), 30)) : offerScoped;
