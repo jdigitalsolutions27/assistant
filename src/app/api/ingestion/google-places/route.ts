@@ -127,9 +127,16 @@ type PreviewRow = {
 type OfferMode = "launch" | "rebuild" | "all";
 type FacebookConfidenceMin = "none" | "medium" | "high";
 type ProspectingProvider = "google" | "foursquare" | "geoapify" | "free-blend";
+type ProviderCountMap = {
+  google: number;
+  foursquare: number;
+  geoapify: number;
+};
 type SearchProviderResult = {
   rows: PreviewRow[];
   provider: ProspectingProvider;
+  provider_counts: ProviderCountMap;
+  raw_count: number;
 };
 
 const GEOAPIFY_CATEGORY_MAP: Record<string, string[]> = {
@@ -750,7 +757,12 @@ async function fetchKeywordResults(
   if (getGooglePlacesApiKey()) {
     try {
       const rows = await fetchGoogleKeywordResults(keyword, location, targetCount);
-      return { rows, provider: "google" };
+      return {
+        rows,
+        provider: "google",
+        provider_counts: { google: rows.length, foursquare: 0, geoapify: 0 },
+        raw_count: rows.length,
+      };
     } catch (error) {
       if (!shouldFallbackToGeoapify(error)) {
         throw error;
@@ -766,6 +778,8 @@ async function fetchKeywordResults(
       fetchFoursquareKeywordResults(keyword, location, freeTargetCount).then((rows) => ({
         rows,
         provider: "foursquare" as const,
+        provider_counts: { google: 0, foursquare: rows.length, geoapify: 0 },
+        raw_count: rows.length,
       })),
     );
   }
@@ -775,6 +789,8 @@ async function fetchKeywordResults(
       fetchGeoapifyKeywordResults(keyword, categoryName, location, freeTargetCount).then((rows) => ({
         rows,
         provider: "geoapify" as const,
+        provider_counts: { google: 0, foursquare: 0, geoapify: rows.length },
+        raw_count: rows.length,
       })),
     );
   }
@@ -796,8 +812,17 @@ async function fetchKeywordResults(
       activeProviders.length > 1
         ? "free-blend"
         : activeProviders[0] ?? (getFoursquareApiKey() && getGeoapifyApiKey() ? "free-blend" : getFoursquareApiKey() ? "foursquare" : "geoapify");
+    const providerCounts = successful.reduce<ProviderCountMap>(
+      (acc, item) => ({
+        google: acc.google + item.provider_counts.google,
+        foursquare: acc.foursquare + item.provider_counts.foursquare,
+        geoapify: acc.geoapify + item.provider_counts.geoapify,
+      }),
+      { google: 0, foursquare: 0, geoapify: 0 },
+    );
+    const rawCount = successful.reduce((sum, item) => sum + item.raw_count, 0);
 
-    return { rows: mergedRows, provider };
+    return { rows: mergedRows, provider, provider_counts: providerCounts, raw_count: rawCount };
   }
 
   throw new Error("No places provider is configured. Add GOOGLE_PLACES_API_KEY, FOURSQUARE_API_KEY, or GEOAPIFY_API_KEY.");
@@ -1241,6 +1266,15 @@ export async function POST(request: NextRequest) {
         ),
       3,
     );
+    const providerCounts = keywordResults.reduce<ProviderCountMap>(
+      (acc, item) => ({
+        google: acc.google + item.provider_counts.google,
+        foursquare: acc.foursquare + item.provider_counts.foursquare,
+        geoapify: acc.geoapify + item.provider_counts.geoapify,
+      }),
+      { google: 0, foursquare: 0, geoapify: 0 },
+    );
+    const rawProviderRows = keywordResults.reduce((sum, item) => sum + item.raw_count, 0);
     const providerUsed: ProspectingProvider =
       keywordResults.some((item) => item.provider === "free-blend")
         ? "free-blend"
@@ -1289,7 +1323,8 @@ export async function POST(request: NextRequest) {
         : ranked
       : strictMatched;
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
-    const enrichedScoped = await enrichTopSearchPreviewRows(offerScoped, Math.min(Math.max(payload.max_results, 20), 30));
+    const enrichLimit = Math.min(Math.max(payload.max_results, 20), 30);
+    const enrichedScoped = await enrichTopSearchPreviewRows(offerScoped, enrichLimit);
     const providerScoped = [...enrichedScoped]
       .map((row) => ({
         row,
@@ -1307,6 +1342,19 @@ export async function POST(request: NextRequest) {
       : { selected: providerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0, filteredOutByFacebookConfidence: 0 };
     const confidenceScoped = filterByFacebookConfidence(strictFacebook.selected, facebookConfidenceMin);
     const scoped = confidenceScoped.selected;
+    const diagnostics = {
+      provider_counts: providerCounts,
+      raw_provider_rows: rawProviderRows,
+      deduped_rows: previews.length,
+      ranked_rows: ranked.length,
+      strict_match_rows: strictMatched.length,
+      relaxed_match_rows: relaxedMatched.length,
+      location_scoped_rows: locationScoped.length,
+      offer_scoped_rows: offerScoped.length,
+      enriched_rows: Math.min(offerScoped.length, enrichLimit),
+      final_rows_before_channel_filters: providerScoped.length,
+      final_rows: scoped.length,
+    };
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));
     const markedSentKeys = await getUserMarkedProspectingKeys({
       user_id: user.id,
@@ -1323,6 +1371,7 @@ export async function POST(request: NextRequest) {
         require_facebook: requireFacebook,
         facebook_confidence_min: facebookConfidenceMin,
         provider_used: providerUsed,
+        diagnostics: user.role === "ADMIN" ? diagnostics : undefined,
         imported: 0,
         filtered_out: Math.max(0, locationScoped.length - scoped.length),
         filtered_out_by_offer_mode: Math.max(0, locationScoped.length - offerScoped.length),
@@ -1384,6 +1433,7 @@ export async function POST(request: NextRequest) {
       require_facebook: requireFacebook,
       facebook_confidence_min: facebookConfidenceMin,
       provider_used: providerUsed,
+      diagnostics: user.role === "ADMIN" ? diagnostics : undefined,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
       filtered_out_by_facebook: strictFacebook.filteredOutByFacebook,

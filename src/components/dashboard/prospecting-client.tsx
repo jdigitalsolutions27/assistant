@@ -59,6 +59,23 @@ type BatchResultItem = {
 type MobilePreviewFilter = "all" | "passed" | "facebook" | "email";
 type OfferMode = "launch" | "rebuild" | "all";
 type FacebookConfidenceMin = "none" | "medium" | "high";
+type ProspectingDiagnostics = {
+  provider_counts: {
+    google: number;
+    foursquare: number;
+    geoapify: number;
+  };
+  raw_provider_rows: number;
+  deduped_rows: number;
+  ranked_rows: number;
+  strict_match_rows: number;
+  relaxed_match_rows: number;
+  location_scoped_rows: number;
+  offer_scoped_rows: number;
+  enriched_rows: number;
+  final_rows_before_channel_filters: number;
+  final_rows: number;
+};
 
 const COUNTRY_DIAL_CODE: Record<string, string> = {
   philippines: "63",
@@ -268,6 +285,7 @@ export function ProspectingClient({
   const [hideMarkedSent, setHideMarkedSent] = useState(true);
   const [markingSentKey, setMarkingSentKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ProspectingDiagnostics | null>(null);
   const enrichRunRef = useRef(0);
   const enrichInFlightRef = useRef(new Set<number>());
 
@@ -413,6 +431,7 @@ export function ProspectingClient({
     setSelectedKeys(new Set());
     setBatchResults([]);
     setMessage(null);
+    setDiagnostics(null);
     try {
       const payload = await requestJson<{
         results?: PlacePreview[];
@@ -426,6 +445,7 @@ export function ProspectingClient({
         filtered_out_by_offer_mode?: number;
         filtered_out_by_facebook?: number;
         filtered_out_by_facebook_confidence?: number;
+        diagnostics?: ProspectingDiagnostics;
         error?: string;
       }>("/api/ingestion/google-places", {
         method: "POST",
@@ -447,6 +467,7 @@ export function ProspectingClient({
       const previewRows = payload.results ?? [];
       setResults(previewRows);
       setMarkedSentKeys(new Set(payload.marked_sent_keys ?? []));
+      setDiagnostics(payload.diagnostics ?? null);
       if (!shouldImport) {
         void enrichPreviewContacts(previewRows, runId, 1);
       }
@@ -972,6 +993,20 @@ export function ProspectingClient({
           ) : null}
           {message ? (
             <div className={`rounded-md border px-3 py-2 text-sm leading-relaxed break-words ${messageAlertClass(message)}`}>{message}</div>
+          ) : null}
+          {!agentMode && diagnostics ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50/80 px-3 py-3 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-200">
+              <p className="font-semibold text-slate-900 dark:text-slate-100">Search Diagnostics</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <p>Provider rows: Google {diagnostics.provider_counts.google} | Foursquare {diagnostics.provider_counts.foursquare} | Geoapify {diagnostics.provider_counts.geoapify}</p>
+                <p>Raw provider rows: {diagnostics.raw_provider_rows} | Deduped: {diagnostics.deduped_rows}</p>
+                <p>Strict matches: {diagnostics.strict_match_rows} | Relaxed matches: {diagnostics.relaxed_match_rows}</p>
+                <p>Location scoped: {diagnostics.location_scoped_rows} | Offer scoped: {diagnostics.offer_scoped_rows}</p>
+                <p>Enriched top rows: {diagnostics.enriched_rows}</p>
+                <p>Before final channel filters: {diagnostics.final_rows_before_channel_filters}</p>
+                <p className="sm:col-span-2 xl:col-span-1">Final preview rows: {diagnostics.final_rows}</p>
+              </div>
+            </div>
           ) : null}
         </CardContent>
       </Card>
