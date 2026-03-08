@@ -78,6 +78,7 @@ Recommended:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: `gpt-4.1-mini`)
 - `GOOGLE_PLACES_API_KEY` (for Google Places ingestion)
+- `FOURSQUARE_API_KEY` (recommended free places provider for broader business listings)
 - `GEOAPIFY_API_KEY` (recommended free fallback for prospecting)
 - `MAINTENANCE_API_KEY` (optional, for cron/nightly endpoint access)
 - `CRON_SECRET` (optional, if using Vercel Cron with bearer auth)
@@ -148,6 +149,7 @@ npm run build
 
 - CSV and Google Places imports now skip duplicates and report `skipped_duplicates`.
 - Prospecting automatically falls back to Geoapify when Google Places is unavailable or blocked by billing/key restrictions.
+- If configured, Foursquare is used ahead of Geoapify for broader free listing coverage.
 
 ## Smooth Live Deployment (Recommended)
 
@@ -160,6 +162,7 @@ npm run build
    - `OPENAI_API_KEY` (optional but recommended)
    - `OPENAI_MODEL` (optional)
    - `GOOGLE_PLACES_API_KEY` (optional)
+   - `FOURSQUARE_API_KEY` (optional, recommended for better free results)
    - `GEOAPIFY_API_KEY` (optional, recommended free fallback)
    - `MAINTENANCE_API_KEY` (optional, for cron/nightly endpoint auth)
 5. After first deploy, run:

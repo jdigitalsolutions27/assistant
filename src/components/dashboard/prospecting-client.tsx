@@ -414,7 +414,7 @@ export function ProspectingClient({
         offer_mode?: OfferMode;
         require_facebook?: boolean;
         facebook_confidence_min?: FacebookConfidenceMin;
-        provider_used?: "google" | "geoapify";
+        provider_used?: "google" | "foursquare" | "geoapify";
         imported?: number;
         skipped_duplicates?: number;
         filtered_out_by_offer_mode?: number;
@@ -445,11 +445,13 @@ export function ProspectingClient({
         void enrichPreviewContacts(previewRows, runId, 1);
       }
       const providerMessage =
-        payload.provider_used === "geoapify"
-          ? "Using Geoapify free fallback provider. Top results are enriched first for faster preview."
-          : payload.provider_used === "google"
-            ? null
-            : null;
+        payload.provider_used === "foursquare"
+          ? "Using Foursquare free places provider for broader listing coverage."
+          : payload.provider_used === "geoapify"
+            ? "Using Geoapify free fallback provider. Top results are enriched first for faster preview."
+            : payload.provider_used === "google"
+              ? null
+              : null;
       if (shouldImport) {
         setMessage(
           [providerMessage, `Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`]

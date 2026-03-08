@@ -75,6 +75,19 @@ type GeoapifyPlaceDetailsResponse = {
   }>;
 };
 
+type FoursquarePlacesResponse = {
+  results?: Array<{
+    fsq_id?: string;
+    name?: string;
+    tel?: string;
+    website?: string;
+    email?: string;
+    location?: {
+      formatted_address?: string;
+    };
+  }>;
+};
+
 type GoogleApiErrorPayload = {
   error?: {
     code?: number;
@@ -108,7 +121,7 @@ type PreviewRow = {
 
 type OfferMode = "launch" | "rebuild" | "all";
 type FacebookConfidenceMin = "none" | "medium" | "high";
-type ProspectingProvider = "google" | "geoapify";
+type ProspectingProvider = "google" | "foursquare" | "geoapify";
 type SearchProviderResult = {
   rows: PreviewRow[];
   provider: ProspectingProvider;
@@ -159,6 +172,11 @@ function getGooglePlacesApiKey(): string | null {
 
 function getGeoapifyApiKey(): string | null {
   const value = env.GEOAPIFY_API_KEY?.trim();
+  return value ? value : null;
+}
+
+function getFoursquareApiKey(): string | null {
+  const value = env.FOURSQUARE_API_KEY?.trim();
   return value ? value : null;
 }
 
@@ -334,6 +352,60 @@ function buildGeoapifyFilter(scope: {
     return `circle:${scope.lon},${scope.lat},15000`;
   }
   return `place:${scope.placeId}`;
+}
+
+async function fetchFoursquareKeywordResults(
+  keyword: string,
+  location: { name: string; city: string | null; region: string | null; country: string | null },
+  targetCount: number,
+): Promise<PreviewRow[]> {
+  const foursquareApiKey = getFoursquareApiKey();
+  if (!foursquareApiKey) return [];
+
+  const params = new URLSearchParams({
+    query: keyword.trim(),
+    near: buildSearchLocationText(location),
+    limit: String(Math.min(Math.max(targetCount, 20), 50)),
+    fields: "fsq_id,name,location,website,tel,email",
+  });
+
+  const response = await fetch(`https://places-api.foursquare.com/places/search?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${foursquareApiKey}`,
+      Accept: "application/json",
+      "X-Places-Api-Version": "2025-06-17",
+    },
+  });
+
+  if (!response.ok) {
+    const rawError = await response.text();
+    throw new Error(`Foursquare places search failed. ${rawError.slice(0, 200)}`);
+  }
+
+  const result = (await response.json()) as FoursquarePlacesResponse;
+  return (result.results ?? []).map((item) => {
+    const website = normalizeUrl(item.website ?? null);
+    return {
+      business_name: item.name ?? null,
+      address: item.location?.formatted_address ?? null,
+      phone: item.tel ?? null,
+      website_url: website,
+      facebook_url: null,
+      email: item.email ?? null,
+      place_id: item.fsq_id ? `foursquare:${item.fsq_id}` : null,
+      contact_verification: evaluateContactVerification({
+        email: item.email ?? null,
+        facebook_url: null,
+        phone: item.tel ?? null,
+        website_url: website,
+      }),
+      contact_checked: true,
+      raw_json: {
+        provider: "foursquare",
+        place: item,
+      },
+    } satisfies PreviewRow;
+  });
 }
 
 async function fetchGoogleKeywordResults(
@@ -622,10 +694,15 @@ async function fetchKeywordResults(
       const rows = await fetchGoogleKeywordResults(keyword, location, targetCount);
       return { rows, provider: "google" };
     } catch (error) {
-      if (!getGeoapifyApiKey() || !shouldFallbackToGeoapify(error)) {
+      if (!shouldFallbackToGeoapify(error)) {
         throw error;
       }
     }
+  }
+
+  if (getFoursquareApiKey()) {
+    const rows = await fetchFoursquareKeywordResults(keyword, location, targetCount);
+    return { rows, provider: "foursquare" };
   }
 
   if (getGeoapifyApiKey()) {
@@ -633,7 +710,7 @@ async function fetchKeywordResults(
     return { rows, provider: "geoapify" };
   }
 
-  throw new Error("No places provider is configured. Add GOOGLE_PLACES_API_KEY or GEOAPIFY_API_KEY.");
+  throw new Error("No places provider is configured. Add GOOGLE_PLACES_API_KEY, FOURSQUARE_API_KEY, or GEOAPIFY_API_KEY.");
 }
 
 async function enrichPreviewRow(row: PreviewRow): Promise<PreviewRow> {
@@ -919,8 +996,11 @@ export async function POST(request: NextRequest) {
     const user = await getApiSessionUser(request);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!getGooglePlacesApiKey() && !getGeoapifyApiKey()) {
-      return NextResponse.json({ error: "No places provider is configured. Add GOOGLE_PLACES_API_KEY or GEOAPIFY_API_KEY." }, { status: 400 });
+    if (!getGooglePlacesApiKey() && !getFoursquareApiKey() && !getGeoapifyApiKey()) {
+      return NextResponse.json(
+        { error: "No places provider is configured. Add GOOGLE_PLACES_API_KEY, FOURSQUARE_API_KEY, or GEOAPIFY_API_KEY." },
+        { status: 400 },
+      );
     }
 
     const body = await request.json();
@@ -968,7 +1048,9 @@ export async function POST(request: NextRequest) {
     const providerUsed: ProspectingProvider =
       keywordResults.some((item) => item.provider === "geoapify") && !keywordResults.every((item) => item.provider === "google")
         ? "geoapify"
-        : (keywordResults[0]?.provider ?? (getGeoapifyApiKey() ? "geoapify" : "google"));
+        : keywordResults.some((item) => item.provider === "foursquare") && !keywordResults.every((item) => item.provider === "google")
+          ? "foursquare"
+          : (keywordResults[0]?.provider ?? (getFoursquareApiKey() ? "foursquare" : getGeoapifyApiKey() ? "geoapify" : "google"));
     const previews = keywordResults.flatMap((item) => item.rows);
 
     const ranked = Array.from(new Map(previews.map((row) => [row.place_id ?? `${row.business_name}-${row.address}`, row])).values())
