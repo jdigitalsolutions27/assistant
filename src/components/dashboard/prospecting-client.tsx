@@ -73,8 +73,14 @@ const COUNTRY_DIAL_CODE: Record<string, string> = {
   "new zealand": "64",
 };
 
-function normalizePhone(value: string | null): string {
-  return (value ?? "").replace(/\D/g, "");
+function asText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function normalizePhone(value: unknown): string {
+  return asText(value).replace(/\D/g, "");
 }
 
 function confidenceWeight(value: string | null | undefined): number {
@@ -98,10 +104,10 @@ function matchesFacebookConfidence(row: PlacePreview, min: FacebookConfidenceMin
 }
 
 function computeChannelReadyScore(row: PlacePreview): number {
-  const hasWebsite = Boolean(row.website_url?.trim());
-  const hasFacebook = Boolean(row.facebook_url?.trim());
+  const hasWebsite = Boolean(asText(row.website_url).trim());
+  const hasFacebook = Boolean(asText(row.facebook_url).trim());
   const hasPhone = normalizePhone(row.phone).length >= 7;
-  const hasEmail = Boolean(row.email?.trim());
+  const hasEmail = Boolean(asText(row.email).trim());
   const channels = [hasWebsite, hasFacebook, hasPhone, hasEmail].filter(Boolean).length;
 
   let score = 0;
@@ -120,7 +126,7 @@ function computeChannelReadyScore(row: PlacePreview): number {
 }
 
 function resolveDialCode(country: string | null | undefined): string | null {
-  const key = (country ?? "").trim().toLowerCase();
+  const key = asText(country).trim().toLowerCase();
   if (!key) return null;
   return COUNTRY_DIAL_CODE[key] ?? null;
 }
@@ -148,20 +154,20 @@ function buildWhatsAppLink(phone: string | null, country: string | null | undefi
 
 function getPreviewMatchKey(row: PlacePreview): string {
   return [
-    (row.business_name ?? "").trim().toLowerCase(),
-    (row.address ?? "").trim().toLowerCase(),
-    (row.website_url ?? "").trim().toLowerCase(),
-    (row.facebook_url ?? "").trim().toLowerCase(),
+    asText(row.business_name).trim().toLowerCase(),
+    asText(row.address).trim().toLowerCase(),
+    asText(row.website_url).trim().toLowerCase(),
+    asText(row.facebook_url).trim().toLowerCase(),
     normalizePhone(row.phone),
-    (row.email ?? "").trim().toLowerCase(),
-    (row.place_id ?? "").trim().toLowerCase(),
+    asText(row.email).trim().toLowerCase(),
+    asText(row.place_id).trim().toLowerCase(),
   ].join("|");
 }
 
 function computePreviewFitScore(row: PlacePreview, offerMode: OfferMode): number {
   let score = 0;
-  const hasWebsite = Boolean(row.website_url?.trim());
-  if (row.business_name?.trim()) score += 16;
+  const hasWebsite = Boolean(asText(row.website_url).trim());
+  if (asText(row.business_name).trim()) score += 16;
   if (offerMode === "launch") {
     score += hasWebsite ? 4 : 24;
   } else if (offerMode === "rebuild") {
@@ -169,10 +175,10 @@ function computePreviewFitScore(row: PlacePreview, offerMode: OfferMode): number
   } else if (hasWebsite) {
     score += 18;
   }
-  if (row.facebook_url?.trim()) score += 16;
+  if (asText(row.facebook_url).trim()) score += 16;
   if (normalizePhone(row.phone).length >= 7) score += 14;
-  if (row.email?.trim()) score += 18;
-  if (row.address?.trim()) score += 10;
+  if (asText(row.email).trim()) score += 18;
+  if (asText(row.address).trim()) score += 10;
   score += 8;
 
   const channels = [Boolean(row.website_url), Boolean(row.facebook_url), normalizePhone(row.phone).length >= 7, Boolean(row.email)].filter(Boolean).length;
@@ -190,7 +196,7 @@ function generatedStatusClass(eligible: boolean): string {
 }
 
 function messageAlertClass(message: string): string {
-  const normalized = message.toLowerCase();
+  const normalized = asText(message).toLowerCase();
   if (
     normalized.includes("failed") ||
     normalized.includes("forbidden") ||

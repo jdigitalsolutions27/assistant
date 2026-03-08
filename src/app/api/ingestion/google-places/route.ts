@@ -161,14 +161,21 @@ const geoapifyScopeCache = new Map<
   }
 >();
 
-function normalizePhone(value?: string | null): string {
-  return (value ?? "").replace(/\D/g, "");
+function asText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
 }
 
-function safeHostname(value?: string | null): string {
-  if (!value) return "";
+function normalizePhone(value?: unknown): string {
+  return asText(value).replace(/\D/g, "");
+}
+
+function safeHostname(value?: unknown): string {
+  const text = asText(value);
+  if (!text) return "";
   try {
-    return new URL(value).hostname.replace(/^www\./i, "").toLowerCase();
+    return new URL(text).hostname.replace(/^www\./i, "").toLowerCase();
   } catch {
     return "";
   }
@@ -196,17 +203,17 @@ function matchPreviewForLead(lead: {
   phone: string | null;
   address: string | null;
 }): (row: PreviewRow) => boolean {
-  const website = (lead.website_url ?? "").toLowerCase();
-  const facebook = (lead.facebook_url ?? "").toLowerCase();
+  const website = asText(lead.website_url).toLowerCase();
+  const facebook = asText(lead.facebook_url).toLowerCase();
   const phone = normalizePhone(lead.phone);
-  const business = (lead.business_name ?? "").trim().toLowerCase();
-  const address = (lead.address ?? "").trim().toLowerCase();
+  const business = asText(lead.business_name).trim().toLowerCase();
+  const address = asText(lead.address).trim().toLowerCase();
 
   return (row) => {
-    if (website && (row.website_url ?? "").toLowerCase() === website) return true;
-    if (facebook && (row.facebook_url ?? "").toLowerCase() === facebook) return true;
+    if (website && asText(row.website_url).toLowerCase() === website) return true;
+    if (facebook && asText(row.facebook_url).toLowerCase() === facebook) return true;
     if (phone && normalizePhone(row.phone) === phone) return true;
-    return Boolean(business) && (row.business_name ?? "").trim().toLowerCase() === business && (row.address ?? "").trim().toLowerCase() === address;
+    return Boolean(business) && asText(row.business_name).trim().toLowerCase() === business && asText(row.address).trim().toLowerCase() === address;
   };
 }
 
@@ -233,20 +240,20 @@ async function mapWithConcurrency<T, R>(
 
 function buildSearchLocationText(location: { name: string; city: string | null; region: string | null; country: string | null }): string {
   const tokens = [location.city, location.name, location.region, location.country]
-    .map((value) => (value ?? "").trim())
+    .map((value) => asText(value).trim())
     .filter(Boolean);
   return Array.from(new Set(tokens)).join(", ");
 }
 
 function resolveCountryCode(countryName: string | null): string | null {
-  if (!countryName) return null;
-  const normalized = countryName.trim().toLowerCase();
+  const normalized = asText(countryName).trim().toLowerCase();
+  if (!normalized) return null;
   const country = Country.getAllCountries().find((item) => item.name.trim().toLowerCase() === normalized);
   return country?.isoCode.toLowerCase() ?? null;
 }
 
 function resolveGeoapifyCategories(categoryName: string): string[] {
-  const normalized = categoryName.trim().toLowerCase();
+  const normalized = asText(categoryName).trim().toLowerCase();
   return GEOAPIFY_CATEGORY_MAP[normalized] ?? ["service", "commercial"];
 }
 
@@ -793,8 +800,8 @@ async function enrichPreviewRow(row: PreviewRow): Promise<PreviewRow> {
   };
 }
 
-function normalizeText(value?: string | null): string {
-  return (value ?? "")
+function normalizeText(value?: unknown): string {
+  return asText(value)
     .toLowerCase()
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
@@ -1083,7 +1090,7 @@ function matchesSelectedLocationRelaxed(
 
 function matchesOfferMode(row: PreviewRow, offerMode: OfferMode): boolean {
   if (offerMode === "all") return true;
-  const hasWebsite = Boolean(row.website_url?.trim());
+  const hasWebsite = Boolean(asText(row.website_url).trim());
   if (offerMode === "launch") return !hasWebsite;
   return hasWebsite;
 }
