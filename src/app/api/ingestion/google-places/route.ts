@@ -121,7 +121,7 @@ type PreviewRow = {
 
 type OfferMode = "launch" | "rebuild" | "all";
 type FacebookConfidenceMin = "none" | "medium" | "high";
-type ProspectingProvider = "google" | "foursquare" | "geoapify";
+type ProspectingProvider = "google" | "foursquare" | "geoapify" | "free-blend";
 type SearchProviderResult = {
   rows: PreviewRow[];
   provider: ProspectingProvider;
@@ -163,6 +163,15 @@ const geoapifyScopeCache = new Map<
 
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
+}
+
+function safeHostname(value?: string | null): string {
+  if (!value) return "";
+  try {
+    return new URL(value).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 function getGooglePlacesApiKey(): string | null {
@@ -700,14 +709,46 @@ async function fetchKeywordResults(
     }
   }
 
+  const freeTargetCount = Math.min(Math.max(targetCount * 2, 40), 120);
+  const freeTasks: Array<Promise<SearchProviderResult>> = [];
+
   if (getFoursquareApiKey()) {
-    const rows = await fetchFoursquareKeywordResults(keyword, location, targetCount);
-    return { rows, provider: "foursquare" };
+    freeTasks.push(
+      fetchFoursquareKeywordResults(keyword, location, freeTargetCount).then((rows) => ({
+        rows,
+        provider: "foursquare" as const,
+      })),
+    );
   }
 
   if (getGeoapifyApiKey()) {
-    const rows = await fetchGeoapifyKeywordResults(keyword, categoryName, location, targetCount);
-    return { rows, provider: "geoapify" };
+    freeTasks.push(
+      fetchGeoapifyKeywordResults(keyword, categoryName, location, freeTargetCount).then((rows) => ({
+        rows,
+        provider: "geoapify" as const,
+      })),
+    );
+  }
+
+  if (freeTasks.length > 0) {
+    const settled = await Promise.allSettled(freeTasks);
+    const successful = settled
+      .filter((item): item is PromiseFulfilledResult<SearchProviderResult> => item.status === "fulfilled")
+      .map((item) => item.value);
+    const failures = settled.filter((item): item is PromiseRejectedResult => item.status === "rejected");
+
+    if (successful.length === 0 && failures.length > 0) {
+      throw failures[0].reason instanceof Error ? failures[0].reason : new Error(String(failures[0].reason));
+    }
+
+    const mergedRows = dedupePreviewRows(successful.flatMap((item) => item.rows));
+    const activeProviders = successful.filter((item) => item.rows.length > 0).map((item) => item.provider);
+    const provider: ProspectingProvider =
+      activeProviders.length > 1
+        ? "free-blend"
+        : activeProviders[0] ?? (getFoursquareApiKey() && getGeoapifyApiKey() ? "free-blend" : getFoursquareApiKey() ? "foursquare" : "geoapify");
+
+    return { rows: mergedRows, provider };
   }
 
   throw new Error("No places provider is configured. Add GOOGLE_PLACES_API_KEY, FOURSQUARE_API_KEY, or GEOAPIFY_API_KEY.");
@@ -775,7 +816,72 @@ function computeRelevanceScore(
 
   if (row.website_url) score += 4;
   if (row.phone) score += 3;
+  if (row.email) score += 3;
+  if (row.facebook_url) score += 4;
   return score;
+}
+
+function computeRowCompletenessScore(row: PreviewRow): number {
+  let score = 0;
+  if (row.business_name) score += 8;
+  if (row.address) score += 8;
+  if (row.phone) score += 10;
+  if (row.website_url) score += 12;
+  if (row.email) score += 10;
+  if (row.facebook_url) score += 10;
+  if (row.contact_checked) score += 5;
+  score += row.contact_verification?.overall_score ?? 0;
+  return score;
+}
+
+function buildPreviewDedupKey(row: PreviewRow): string {
+  const business = normalizeText(row.business_name);
+  const address = normalizeText(row.address);
+  const phone = normalizePhone(row.phone);
+  const websiteHost = safeHostname(row.website_url);
+
+  if (business && phone) return `phone:${business}|${phone}`;
+  if (business && websiteHost) return `web:${business}|${websiteHost}`;
+  if (business && address) return `addr:${business}|${address}`;
+  if (business) return `name:${business}`;
+  if (phone) return `phone-only:${phone}`;
+  if (websiteHost) return `web-only:${websiteHost}`;
+  return row.place_id ?? `${row.business_name ?? "unknown"}-${row.address ?? "unknown"}`;
+}
+
+function mergePreviewRows(existing: PreviewRow, incoming: PreviewRow): PreviewRow {
+  const keepIncoming = computeRowCompletenessScore(incoming) > computeRowCompletenessScore(existing);
+  const primary = keepIncoming ? incoming : existing;
+  const secondary = keepIncoming ? existing : incoming;
+
+  return {
+    ...primary,
+    business_name: primary.business_name ?? secondary.business_name,
+    address: primary.address ?? secondary.address,
+    phone: primary.phone ?? secondary.phone,
+    website_url: primary.website_url ?? secondary.website_url,
+    facebook_url: primary.facebook_url ?? secondary.facebook_url,
+    email: primary.email ?? secondary.email,
+    place_id: primary.place_id ?? secondary.place_id,
+    contact_verification:
+      computeRowCompletenessScore(incoming) >= computeRowCompletenessScore(existing)
+        ? incoming.contact_verification
+        : existing.contact_verification,
+    contact_checked: primary.contact_checked || secondary.contact_checked,
+    raw_json: primary.raw_json,
+  };
+}
+
+function dedupePreviewRows(rows: PreviewRow[]): PreviewRow[] {
+  const merged = new Map<string, PreviewRow>();
+
+  for (const row of rows) {
+    const key = buildPreviewDedupKey(row);
+    const existing = merged.get(key);
+    merged.set(key, existing ? mergePreviewRows(existing, row) : row);
+  }
+
+  return Array.from(merged.values());
 }
 
 function buildLocationCandidates(location: { name: string; city: string | null; region: string | null }): string[] {
@@ -1083,14 +1189,17 @@ export async function POST(request: NextRequest) {
       3,
     );
     const providerUsed: ProspectingProvider =
-      keywordResults.some((item) => item.provider === "geoapify") && !keywordResults.every((item) => item.provider === "google")
-        ? "geoapify"
-        : keywordResults.some((item) => item.provider === "foursquare") && !keywordResults.every((item) => item.provider === "google")
-          ? "foursquare"
-          : (keywordResults[0]?.provider ?? (getFoursquareApiKey() ? "foursquare" : getGeoapifyApiKey() ? "geoapify" : "google"));
-    const previews = keywordResults.flatMap((item) => item.rows);
+      keywordResults.some((item) => item.provider === "free-blend")
+        ? "free-blend"
+        : keywordResults.some((item) => item.provider === "geoapify") && !keywordResults.every((item) => item.provider === "google")
+          ? "geoapify"
+          : keywordResults.some((item) => item.provider === "foursquare") && !keywordResults.every((item) => item.provider === "google")
+            ? "foursquare"
+            : (keywordResults[0]?.provider ??
+              (getFoursquareApiKey() && getGeoapifyApiKey() ? "free-blend" : getFoursquareApiKey() ? "foursquare" : getGeoapifyApiKey() ? "geoapify" : "google"));
+    const previews = dedupePreviewRows(keywordResults.flatMap((item) => item.rows));
 
-    const ranked = Array.from(new Map(previews.map((row) => [row.place_id ?? `${row.business_name}-${row.address}`, row])).values())
+    const ranked = dedupePreviewRows(previews)
       .map((row) => ({
         row,
         relevance: computeRelevanceScore(row, payload.keywords, {
