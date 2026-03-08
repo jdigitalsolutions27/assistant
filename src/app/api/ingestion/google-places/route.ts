@@ -1,3 +1,4 @@
+import { Country } from "country-state-city";
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSessionUser } from "@/lib/auth";
 import { enforceApiGuards, ensureCategoryAccess, jsonError } from "@/lib/api-helpers";
@@ -30,6 +31,44 @@ type GooglePlacesResponse = {
   nextPageToken?: string;
 };
 
+type GeoapifyGeocodeResponse = {
+  results?: Array<{
+    place_id?: string;
+    lat?: number;
+    lon?: number;
+  }>;
+};
+
+type GeoapifyPlacesResponse = {
+  features?: Array<{
+    properties?: {
+      name?: string;
+      formatted?: string;
+      place_id?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+      categories?: string[];
+    };
+  }>;
+};
+
+type GeoapifyPlaceDetailsResponse = {
+  features?: Array<{
+    properties?: {
+      feature_type?: string;
+      website?: string;
+      website_other?: string[];
+      contact?: {
+        phone?: string;
+        email?: string;
+      };
+      formatted?: string;
+      name?: string;
+    };
+  }>;
+};
+
 type GoogleApiErrorPayload = {
   error?: {
     code?: number;
@@ -57,6 +96,29 @@ type PreviewRow = {
 
 type OfferMode = "launch" | "rebuild" | "all";
 type FacebookConfidenceMin = "none" | "medium" | "high";
+type ProspectingProvider = "google" | "geoapify";
+type SearchProviderResult = {
+  rows: PreviewRow[];
+  provider: ProspectingProvider;
+};
+
+const GEOAPIFY_CATEGORY_MAP: Record<string, string[]> = {
+  "auto service": ["service", "commercial"],
+  "car rental": ["rental", "service"],
+  construction: ["service", "commercial"],
+  "dental clinic": ["healthcare"],
+  "fast food": ["catering.fast_food", "catering"],
+  furniture: ["commercial"],
+  "gym fitness": ["sport", "service"],
+  hotel: ["accommodation.hotel", "accommodation"],
+  "medical clinics": ["healthcare"],
+  "real state": ["commercial", "service"],
+  "rental services": ["rental", "service"],
+  resort: ["accommodation"],
+  restaurant: ["catering.restaurant", "catering"],
+  salon: ["service", "commercial"],
+  spa: ["service", "commercial"],
+};
 
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
@@ -111,6 +173,18 @@ function buildSearchLocationText(location: { name: string; city: string | null; 
   return Array.from(new Set(tokens)).join(", ");
 }
 
+function resolveCountryCode(countryName: string | null): string | null {
+  if (!countryName) return null;
+  const normalized = countryName.trim().toLowerCase();
+  const country = Country.getAllCountries().find((item) => item.name.trim().toLowerCase() === normalized);
+  return country?.isoCode.toLowerCase() ?? null;
+}
+
+function resolveGeoapifyCategories(categoryName: string): string[] {
+  const normalized = categoryName.trim().toLowerCase();
+  return GEOAPIFY_CATEGORY_MAP[normalized] ?? ["service", "commercial"];
+}
+
 function parseGoogleApiError(rawError: string): GoogleApiErrorPayload | null {
   try {
     return JSON.parse(rawError) as GoogleApiErrorPayload;
@@ -161,7 +235,19 @@ function toGooglePlacesErrorMessage(rawError: string): string {
   return `Google Places search failed. ${message.split("\n")[0].trim()}`;
 }
 
-async function fetchKeywordResults(
+function shouldFallbackToGeoapify(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("google places api billing is disabled") ||
+    message.includes("google places api (new) is not enabled") ||
+    message.includes("google places api key restrictions are blocking") ||
+    message.includes("google places api quota has been exceeded") ||
+    message.includes("google places search failed")
+  );
+}
+
+async function fetchGoogleKeywordResults(
   keyword: string,
   location: { name: string; city: string | null; region: string | null; country: string | null },
   targetCount: number,
@@ -224,6 +310,182 @@ async function fetchKeywordResults(
   }
 
   return results;
+}
+
+async function resolveGeoapifyPlaceScope(location: {
+  name: string;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+}): Promise<{ placeId: string; lat: number | null; lon: number | null } | null> {
+  if (!env.GEOAPIFY_API_KEY) return null;
+
+  const locationText = buildSearchLocationText(location);
+  if (!locationText) return null;
+
+  const params = new URLSearchParams({
+    text: locationText,
+    format: "json",
+    limit: "1",
+    apiKey: env.GEOAPIFY_API_KEY,
+  });
+
+  const countryCode = resolveCountryCode(location.country);
+  if (countryCode) {
+    params.set("filter", `countrycode:${countryCode}`);
+  }
+
+  const response = await fetch(`https://api.geoapify.com/v1/geocode/search?${params.toString()}`);
+  if (!response.ok) {
+    const rawError = await response.text();
+    throw new Error(`Geoapify geocoding failed. ${rawError.slice(0, 160)}`);
+  }
+
+  const result = (await response.json()) as GeoapifyGeocodeResponse;
+  const first = result.results?.[0];
+  if (!first?.place_id) return null;
+
+  return {
+    placeId: first.place_id,
+    lat: first.lat ?? null,
+    lon: first.lon ?? null,
+  };
+}
+
+async function fetchGeoapifyPlaceDetails(placeId: string): Promise<{
+  website_url: string | null;
+  phone: string | null;
+  email: string | null;
+}> {
+  if (!env.GEOAPIFY_API_KEY) {
+    return { website_url: null, phone: null, email: null };
+  }
+
+  const params = new URLSearchParams({
+    id: placeId,
+    features: "details",
+    apiKey: env.GEOAPIFY_API_KEY,
+  });
+  const response = await fetch(`https://api.geoapify.com/v2/place-details?${params.toString()}`);
+  if (!response.ok) {
+    return { website_url: null, phone: null, email: null };
+  }
+
+  const result = (await response.json()) as GeoapifyPlaceDetailsResponse;
+  const details =
+    result.features?.find((feature) => feature.properties?.feature_type === "details")?.properties ??
+    result.features?.[0]?.properties;
+
+  const website = normalizeUrl(details?.website ?? details?.website_other?.[0] ?? null);
+  return {
+    website_url: website,
+    phone: details?.contact?.phone ?? null,
+    email: details?.contact?.email ?? null,
+  };
+}
+
+async function fetchGeoapifyKeywordResults(
+  keyword: string,
+  categoryName: string,
+  location: { name: string; city: string | null; region: string | null; country: string | null },
+  targetCount: number,
+): Promise<PreviewRow[]> {
+  if (!env.GEOAPIFY_API_KEY) return [];
+  const scope = await resolveGeoapifyPlaceScope(location);
+  if (!scope?.placeId) {
+    throw new Error("Geoapify could not resolve the selected location. Try a more specific city or municipality.");
+  }
+
+  const categories = resolveGeoapifyCategories(categoryName).join(",");
+  const maxPages = Math.max(1, Math.min(10, Math.ceil(targetCount / 20)));
+  const collected: GeoapifyPlacesResponse["features"] = [];
+
+  for (let pageIndex = 0; pageIndex < maxPages && (collected?.length ?? 0) < targetCount; pageIndex += 1) {
+    const params = new URLSearchParams({
+      categories,
+      filter: `place:${scope.placeId}`,
+      limit: "20",
+      offset: String(pageIndex * 20),
+      apiKey: env.GEOAPIFY_API_KEY,
+    });
+    if (scope.lat !== null && scope.lon !== null) {
+      params.set("bias", `proximity:${scope.lon},${scope.lat}`);
+    }
+    if (keyword.trim()) {
+      params.set("name", keyword.trim());
+    }
+
+    const response = await fetch(`https://api.geoapify.com/v2/places?${params.toString()}`);
+    if (!response.ok) {
+      const rawError = await response.text();
+      throw new Error(`Geoapify places search failed. ${rawError.slice(0, 160)}`);
+    }
+
+    const result = (await response.json()) as GeoapifyPlacesResponse;
+    const features = result.features ?? [];
+    collected.push(...features);
+    if (features.length < 20) break;
+  }
+
+  const sliced = collected.slice(0, targetCount);
+  const detailRows = await mapWithConcurrency(
+    sliced,
+    async (feature) => {
+      const properties = feature.properties ?? {};
+      const placeId = properties.place_id ?? null;
+      const details = placeId ? await fetchGeoapifyPlaceDetails(placeId) : { website_url: null, phone: null, email: null };
+
+      return {
+        business_name: properties.name ?? null,
+        address: properties.formatted ?? null,
+        phone: details.phone,
+        website_url: details.website_url,
+        facebook_url: null,
+        email: details.email,
+        place_id: placeId ? `geoapify:${placeId}` : null,
+        contact_verification: evaluateContactVerification({
+          email: details.email,
+          facebook_url: null,
+          phone: details.phone,
+          website_url: details.website_url,
+        }),
+        contact_checked: true,
+        raw_json: {
+          provider: "geoapify",
+          properties,
+          detail_contact: details,
+        } satisfies Record<string, unknown>,
+      } satisfies PreviewRow;
+    },
+    6,
+  );
+
+  return detailRows;
+}
+
+async function fetchKeywordResults(
+  keyword: string,
+  categoryName: string,
+  location: { name: string; city: string | null; region: string | null; country: string | null },
+  targetCount: number,
+): Promise<SearchProviderResult> {
+  if (env.GOOGLE_PLACES_API_KEY) {
+    try {
+      const rows = await fetchGoogleKeywordResults(keyword, location, targetCount);
+      return { rows, provider: "google" };
+    } catch (error) {
+      if (!env.GEOAPIFY_API_KEY || !shouldFallbackToGeoapify(error)) {
+        throw error;
+      }
+    }
+  }
+
+  if (env.GEOAPIFY_API_KEY) {
+    const rows = await fetchGeoapifyKeywordResults(keyword, categoryName, location, targetCount);
+    return { rows, provider: "geoapify" };
+  }
+
+  throw new Error("No places provider is configured. Add GOOGLE_PLACES_API_KEY or GEOAPIFY_API_KEY.");
 }
 
 async function enrichPreviewRow(row: PreviewRow): Promise<PreviewRow> {
@@ -509,8 +771,8 @@ export async function POST(request: NextRequest) {
     const user = await getApiSessionUser(request);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!env.GOOGLE_PLACES_API_KEY) {
-      return NextResponse.json({ error: "GOOGLE_PLACES_API_KEY is not configured." }, { status: 400 });
+    if (!env.GOOGLE_PLACES_API_KEY && !env.GEOAPIFY_API_KEY) {
+      return NextResponse.json({ error: "No places provider is configured. Add GOOGLE_PLACES_API_KEY or GEOAPIFY_API_KEY." }, { status: 400 });
     }
 
     const body = await request.json();
@@ -539,11 +801,12 @@ export async function POST(request: NextRequest) {
     }
 
     const targetPerKeyword = Math.max(20, Math.ceil(payload.max_results / Math.max(1, payload.keywords.length)));
-    const keywordRows = await mapWithConcurrency(
+    const keywordResults = await mapWithConcurrency(
       payload.keywords,
       async (keyword) =>
         fetchKeywordResults(
           keyword,
+          category?.name ?? "",
           {
             name: location.name,
             city: location.city,
@@ -554,7 +817,11 @@ export async function POST(request: NextRequest) {
         ),
       3,
     );
-    const previews = keywordRows.flat();
+    const providerUsed: ProspectingProvider =
+      keywordResults.some((item) => item.provider === "geoapify") && !keywordResults.every((item) => item.provider === "google")
+        ? "geoapify"
+        : (keywordResults[0]?.provider ?? (env.GEOAPIFY_API_KEY ? "geoapify" : "google"));
+    const previews = keywordResults.flatMap((item) => item.rows);
 
     const ranked = Array.from(new Map(previews.map((row) => [row.place_id ?? `${row.business_name}-${row.address}`, row])).values())
       .map((row) => ({
@@ -609,6 +876,7 @@ export async function POST(request: NextRequest) {
         offer_mode: effectiveOfferMode,
         require_facebook: requireFacebook,
         facebook_confidence_min: facebookConfidenceMin,
+        provider_used: providerUsed,
         imported: 0,
         filtered_out: Math.max(0, locationScoped.length - scoped.length),
         filtered_out_by_offer_mode: Math.max(0, locationScoped.length - offerScoped.length),
@@ -669,6 +937,7 @@ export async function POST(request: NextRequest) {
       offer_mode: effectiveOfferMode,
       require_facebook: requireFacebook,
       facebook_confidence_min: facebookConfidenceMin,
+      provider_used: providerUsed,
       imported: inserted.length,
       skipped_duplicates: insertResult.skippedDuplicates,
       filtered_out_by_facebook: strictFacebook.filteredOutByFacebook,

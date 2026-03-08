@@ -409,6 +409,7 @@ export function ProspectingClient({
         offer_mode?: OfferMode;
         require_facebook?: boolean;
         facebook_confidence_min?: FacebookConfidenceMin;
+        provider_used?: "google" | "geoapify";
         imported?: number;
         skipped_duplicates?: number;
         filtered_out_by_offer_mode?: number;
@@ -438,27 +439,48 @@ export function ProspectingClient({
       if (!shouldImport) {
         void enrichPreviewContacts(previewRows, runId, 1);
       }
+      const providerMessage =
+        payload.provider_used === "geoapify"
+          ? "Using Geoapify free fallback provider."
+          : payload.provider_used === "google"
+            ? null
+            : null;
       if (shouldImport) {
-        setMessage(`Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`);
+        setMessage(
+          [providerMessage, `Imported ${payload.imported ?? 0} leads. Skipped duplicates: ${payload.skipped_duplicates ?? 0}.`]
+            .filter(Boolean)
+            .join(" "),
+        );
       } else if (previewRows.length === 0) {
         if (!agentMode && requireFacebook) {
-          setMessage("No Facebook-contactable leads found for this search. Try broader keywords or disable Require Facebook.");
+          setMessage([providerMessage, "No Facebook-contactable leads found for this search. Try broader keywords or disable Require Facebook."].filter(Boolean).join(" "));
           return;
         }
         if (effectiveOfferMode === "launch") {
-          setMessage("No no-website leads found for this location and keywords. Try different keywords or switch Offer Mode.");
+          setMessage([providerMessage, "No no-website leads found for this location and keywords. Try different keywords or switch Offer Mode."].filter(Boolean).join(" "));
         } else if (effectiveOfferMode === "rebuild") {
-          setMessage("No website-ready leads found for this location and keywords. Try different keywords or switch Offer Mode.");
+          setMessage([providerMessage, "No website-ready leads found for this location and keywords. Try different keywords or switch Offer Mode."].filter(Boolean).join(" "));
         } else {
-          setMessage("No leads found for this location and keywords.");
+          setMessage([providerMessage, "No leads found for this location and keywords."].filter(Boolean).join(" "));
         }
       } else if (!agentMode && requireFacebook && (payload.filtered_out_by_facebook ?? 0) > 0) {
         const confidenceFiltered = payload.filtered_out_by_facebook_confidence ?? 0;
         setMessage(
-          `Facebook strict mode is on. ${payload.filtered_out_by_facebook} listings had no verified Facebook. ${confidenceFiltered} filtered by confidence threshold.`,
+          [
+            providerMessage,
+            `Facebook strict mode is on. ${payload.filtered_out_by_facebook} listings had no verified Facebook. ${confidenceFiltered} filtered by confidence threshold.`,
+          ]
+            .filter(Boolean)
+            .join(" "),
         );
       } else if ((payload.filtered_out_by_offer_mode ?? 0) > 0) {
-        setMessage(`Showing ${effectiveOfferMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`);
+        setMessage(
+          [providerMessage, `Showing ${effectiveOfferMode} results only. ${payload.filtered_out_by_offer_mode} listings filtered out by offer mode.`]
+            .filter(Boolean)
+            .join(" "),
+        );
+      } else if (providerMessage) {
+        setMessage(providerMessage);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Search failed.");
