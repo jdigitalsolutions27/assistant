@@ -36,6 +36,12 @@ type GeoapifyGeocodeResponse = {
     place_id?: string;
     lat?: number;
     lon?: number;
+    bbox?: {
+      lon1?: number;
+      lat1?: number;
+      lon2?: number;
+      lat2?: number;
+    };
   }>;
 };
 
@@ -113,21 +119,34 @@ const GEOAPIFY_CATEGORY_MAP: Record<string, string[]> = {
   "car rental": ["rental", "service"],
   construction: ["service", "commercial"],
   "dental clinic": ["healthcare"],
-  "fast food": ["catering.fast_food", "catering"],
+  "fast food": ["catering"],
   furniture: ["commercial"],
   "gym fitness": ["sport", "service"],
-  hotel: ["accommodation.hotel", "accommodation"],
+  hotel: ["accommodation"],
   "medical clinics": ["healthcare"],
   "real state": ["commercial", "service"],
   "rental services": ["rental", "service"],
   resort: ["accommodation"],
-  restaurant: ["catering.restaurant", "catering"],
+  restaurant: ["catering"],
   salon: ["service", "commercial"],
   spa: ["service", "commercial"],
 };
 
 const GEOAPIFY_SCOPE_CACHE_TTL_MS = 10 * 60 * 1000;
-const geoapifyScopeCache = new Map<string, { expiresAt: number; value: { placeId: string; lat: number | null; lon: number | null } | null }>();
+const geoapifyScopeCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    value:
+      | {
+          placeId: string;
+          lat: number | null;
+          lon: number | null;
+          bbox: { lon1: number; lat1: number; lon2: number; lat2: number } | null;
+        }
+      | null;
+  }
+>();
 
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
@@ -302,6 +321,21 @@ function shouldFallbackToGeoapify(error: unknown): boolean {
   );
 }
 
+function buildGeoapifyFilter(scope: {
+  placeId: string;
+  lat: number | null;
+  lon: number | null;
+  bbox: { lon1: number; lat1: number; lon2: number; lat2: number } | null;
+}): string {
+  if (scope.bbox) {
+    return `rect:${scope.bbox.lon1},${scope.bbox.lat1},${scope.bbox.lon2},${scope.bbox.lat2}`;
+  }
+  if (scope.lon !== null && scope.lat !== null) {
+    return `circle:${scope.lon},${scope.lat},15000`;
+  }
+  return `place:${scope.placeId}`;
+}
+
 async function fetchGoogleKeywordResults(
   keyword: string,
   location: { name: string; city: string | null; region: string | null; country: string | null },
@@ -373,7 +407,7 @@ async function resolveGeoapifyPlaceScope(location: {
   city: string | null;
   region: string | null;
   country: string | null;
-}): Promise<{ placeId: string; lat: number | null; lon: number | null } | null> {
+}): Promise<{ placeId: string; lat: number | null; lon: number | null; bbox: { lon1: number; lat1: number; lon2: number; lat2: number } | null } | null> {
   const geoapifyApiKey = getGeoapifyApiKey();
   if (!geoapifyApiKey) return null;
 
@@ -414,6 +448,18 @@ async function resolveGeoapifyPlaceScope(location: {
     placeId: first.place_id,
     lat: first.lat ?? null,
     lon: first.lon ?? null,
+    bbox:
+      typeof first.bbox?.lon1 === "number" &&
+      typeof first.bbox?.lat1 === "number" &&
+      typeof first.bbox?.lon2 === "number" &&
+      typeof first.bbox?.lat2 === "number"
+        ? {
+            lon1: first.bbox.lon1,
+            lat1: first.bbox.lat1,
+            lon2: first.bbox.lon2,
+            lat2: first.bbox.lat2,
+          }
+        : null,
   };
   geoapifyScopeCache.set(cacheKey, { expiresAt: Date.now() + GEOAPIFY_SCOPE_CACHE_TTL_MS, value });
   return value;
@@ -508,15 +554,17 @@ async function fetchGeoapifyKeywordResults(
   }
 
   const categories = resolveGeoapifyCategories(categoryName).join(",");
-  const maxPages = Math.max(1, Math.min(10, Math.ceil(targetCount / 20)));
+  const pageSize = 50;
+  const maxPages = Math.max(1, Math.min(10, Math.ceil(targetCount / pageSize)));
   const collected: GeoapifyPlacesResponse["features"] = [];
+  const filter = buildGeoapifyFilter(scope);
 
   for (let pageIndex = 0; pageIndex < maxPages && (collected?.length ?? 0) < targetCount; pageIndex += 1) {
     const params = new URLSearchParams({
       categories,
-      filter: `place:${scope.placeId}`,
-      limit: "20",
-      offset: String(pageIndex * 20),
+      filter,
+      limit: String(pageSize),
+      offset: String(pageIndex * pageSize),
       apiKey: geoapifyApiKey,
     });
     if (scope.lat !== null && scope.lon !== null) {
@@ -532,7 +580,7 @@ async function fetchGeoapifyKeywordResults(
     const result = (await response.json()) as GeoapifyPlacesResponse;
     const features = result.features ?? [];
     collected.push(...features);
-    if (features.length < 20) break;
+    if (features.length < pageSize) break;
   }
 
   const sliced = collected.slice(0, targetCount);
