@@ -82,6 +82,11 @@ type FoursquarePlacesResponse = {
     tel?: string;
     website?: string;
     email?: string;
+    social_media?: {
+      facebook_id?: string;
+      instagram?: string;
+      twitter?: string;
+    };
     location?: {
       formatted_address?: string;
     };
@@ -381,7 +386,7 @@ async function fetchFoursquareKeywordResults(
   const params = new URLSearchParams({
     query: keyword.trim(),
     limit: String(Math.min(Math.max(targetCount, 20), 50)),
-    fields: "name,location,website,tel,email",
+    fields: "name,location,website,tel,email,social_media",
   });
 
   try {
@@ -412,21 +417,22 @@ async function fetchFoursquareKeywordResults(
   const result = (await response.json()) as FoursquarePlacesResponse;
   return (result.results ?? []).map((item) => {
     const website = normalizeUrl(item.website ?? null);
+    const facebookUrl = item.social_media?.facebook_id ? `https://facebook.com/${item.social_media.facebook_id}` : null;
     return {
       business_name: item.name ?? null,
       address: item.location?.formatted_address ?? null,
       phone: item.tel ?? null,
       website_url: website,
-      facebook_url: null,
+      facebook_url: facebookUrl,
       email: item.email ?? null,
       place_id: item.fsq_id ? `foursquare:${item.fsq_id}` : null,
       contact_verification: evaluateContactVerification({
         email: item.email ?? null,
-        facebook_url: null,
+        facebook_url: facebookUrl,
         phone: item.tel ?? null,
         website_url: website,
       }),
-      contact_checked: true,
+      contact_checked: false,
       raw_json: {
         provider: "foursquare",
         place: item,
@@ -630,12 +636,37 @@ async function enrichGeoapifyPreviewRow(row: PreviewRow): Promise<PreviewRow> {
   };
 }
 
-async function enrichTopGeoapifyRows(rows: PreviewRow[], maxToEnrich: number): Promise<PreviewRow[]> {
+async function enrichSearchPreviewRow(row: PreviewRow): Promise<PreviewRow> {
+  let enriched = row;
+
+  if (extractGeoapifyPlaceId(enriched)) {
+    enriched = await enrichGeoapifyPreviewRow(enriched);
+  }
+
+  if (enriched.website_url) {
+    enriched = await enrichPreviewRow(enriched);
+  } else if (!enriched.contact_checked) {
+    enriched = {
+      ...enriched,
+      contact_checked: true,
+      contact_verification: evaluateContactVerification({
+        email: enriched.email,
+        facebook_url: enriched.facebook_url,
+        phone: enriched.phone,
+        website_url: enriched.website_url,
+      }),
+    };
+  }
+
+  return enriched;
+}
+
+async function enrichTopSearchPreviewRows(rows: PreviewRow[], maxToEnrich: number): Promise<PreviewRow[]> {
   if (maxToEnrich <= 0 || rows.length === 0) return rows;
   const limit = Math.min(rows.length, maxToEnrich);
   const head = rows.slice(0, limit);
   const tail = rows.slice(limit);
-  const enrichedHead = await mapWithConcurrency(head, enrichGeoapifyPreviewRow, 8);
+  const enrichedHead = await mapWithConcurrency(head, enrichSearchPreviewRow, 6);
   return [...enrichedHead, ...tail];
 }
 
@@ -969,6 +1000,10 @@ function parseCountryScope(country: string | null): string[] {
   const normalized = normalizeText(country);
   if (!normalized) return [];
   const items = new Set<string>([normalized]);
+  const matchedCountry = Country.getAllCountries().find((item) => item.name.trim().toLowerCase() === normalized);
+  if (matchedCountry?.isoCode) {
+    items.add(matchedCountry.isoCode.toLowerCase());
+  }
   if (normalized === "philippines") {
     items.add("philippine");
     items.add("ph");
@@ -1254,8 +1289,19 @@ export async function POST(request: NextRequest) {
         : ranked
       : strictMatched;
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
-    const providerScoped =
-      providerUsed === "geoapify" ? await enrichTopGeoapifyRows(offerScoped, Math.min(Math.max(payload.max_results, 20), 30)) : offerScoped;
+    const enrichedScoped = await enrichTopSearchPreviewRows(offerScoped, Math.min(Math.max(payload.max_results, 20), 30));
+    const providerScoped = [...enrichedScoped]
+      .map((row) => ({
+        row,
+        relevance: computeRelevanceScore(row, payload.keywords, {
+          name: location.name,
+          city: location.city,
+          region: location.region,
+        }),
+        completeness: computeRowCompletenessScore(row),
+      }))
+      .sort((a, b) => b.relevance - a.relevance || b.completeness - a.completeness)
+      .map((item) => item.row);
     const strictFacebook = requireFacebook
       ? await selectStrictFacebookLeads(providerScoped, payload.max_results)
       : { selected: providerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0, filteredOutByFacebookConfidence: 0 };
