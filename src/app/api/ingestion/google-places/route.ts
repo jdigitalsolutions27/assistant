@@ -81,6 +81,12 @@ type GoogleApiErrorPayload = {
   };
 };
 
+type GeoapifyErrorPayload = {
+  statusCode?: number;
+  error?: string;
+  message?: string;
+};
+
 type PreviewRow = {
   business_name: string | null;
   address: string | null;
@@ -122,6 +128,16 @@ const GEOAPIFY_CATEGORY_MAP: Record<string, string[]> = {
 
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
+}
+
+function getGooglePlacesApiKey(): string | null {
+  const value = env.GOOGLE_PLACES_API_KEY?.trim();
+  return value ? value : null;
+}
+
+function getGeoapifyApiKey(): string | null {
+  const value = env.GEOAPIFY_API_KEY?.trim();
+  return value ? value : null;
 }
 
 function matchPreviewForLead(lead: {
@@ -235,6 +251,42 @@ function toGooglePlacesErrorMessage(rawError: string): string {
   return `Google Places search failed. ${message.split("\n")[0].trim()}`;
 }
 
+function parseGeoapifyError(rawError: string): GeoapifyErrorPayload | null {
+  try {
+    return JSON.parse(rawError) as GeoapifyErrorPayload;
+  } catch {
+    return null;
+  }
+}
+
+function toGeoapifyErrorMessage(rawError: string, context: "geocoding" | "places" | "details"): string {
+  const parsed = parseGeoapifyError(rawError);
+  const message = parsed?.message?.trim() || parsed?.error?.trim() || rawError.trim();
+  const statusCode = parsed?.statusCode ?? 0;
+
+  if (statusCode === 401 || message.toLowerCase().includes("invalid apikey")) {
+    return "Geoapify API key is invalid or malformed. Update GEOAPIFY_API_KEY and redeploy.";
+  }
+
+  if (statusCode === 403) {
+    return "Geoapify rejected the request. Check API key restrictions or project access settings.";
+  }
+
+  if (statusCode === 429) {
+    return "Geoapify free quota is currently exhausted. Wait for the quota window to reset, then try again.";
+  }
+
+  if (context === "geocoding") {
+    return `Geoapify location lookup failed. ${message}`;
+  }
+
+  if (context === "places") {
+    return `Geoapify places search failed. ${message}`;
+  }
+
+  return `Geoapify place details lookup failed. ${message}`;
+}
+
 function shouldFallbackToGeoapify(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
@@ -252,7 +304,8 @@ async function fetchGoogleKeywordResults(
   location: { name: string; city: string | null; region: string | null; country: string | null },
   targetCount: number,
 ): Promise<PreviewRow[]> {
-  if (!env.GOOGLE_PLACES_API_KEY) return [];
+  const googleApiKey = getGooglePlacesApiKey();
+  if (!googleApiKey) return [];
   const results: PreviewRow[] = [];
   const locationText = buildSearchLocationText(location);
   const textQuery = locationText ? `${keyword} in ${locationText}` : keyword;
@@ -264,7 +317,7 @@ async function fetchGoogleKeywordResults(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": env.GOOGLE_PLACES_API_KEY,
+        "X-Goog-Api-Key": googleApiKey,
         "X-Goog-FieldMask":
           "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.googleMapsUri,nextPageToken",
       },
@@ -318,7 +371,8 @@ async function resolveGeoapifyPlaceScope(location: {
   region: string | null;
   country: string | null;
 }): Promise<{ placeId: string; lat: number | null; lon: number | null } | null> {
-  if (!env.GEOAPIFY_API_KEY) return null;
+  const geoapifyApiKey = getGeoapifyApiKey();
+  if (!geoapifyApiKey) return null;
 
   const locationText = buildSearchLocationText(location);
   if (!locationText) return null;
@@ -327,7 +381,7 @@ async function resolveGeoapifyPlaceScope(location: {
     text: locationText,
     format: "json",
     limit: "1",
-    apiKey: env.GEOAPIFY_API_KEY,
+    apiKey: geoapifyApiKey,
   });
 
   const countryCode = resolveCountryCode(location.country);
@@ -338,7 +392,7 @@ async function resolveGeoapifyPlaceScope(location: {
   const response = await fetch(`https://api.geoapify.com/v1/geocode/search?${params.toString()}`);
   if (!response.ok) {
     const rawError = await response.text();
-    throw new Error(`Geoapify geocoding failed. ${rawError.slice(0, 160)}`);
+    throw new Error(toGeoapifyErrorMessage(rawError, "geocoding"));
   }
 
   const result = (await response.json()) as GeoapifyGeocodeResponse;
@@ -357,14 +411,15 @@ async function fetchGeoapifyPlaceDetails(placeId: string): Promise<{
   phone: string | null;
   email: string | null;
 }> {
-  if (!env.GEOAPIFY_API_KEY) {
+  const geoapifyApiKey = getGeoapifyApiKey();
+  if (!geoapifyApiKey) {
     return { website_url: null, phone: null, email: null };
   }
 
   const params = new URLSearchParams({
     id: placeId,
     features: "details",
-    apiKey: env.GEOAPIFY_API_KEY,
+    apiKey: geoapifyApiKey,
   });
   const response = await fetch(`https://api.geoapify.com/v2/place-details?${params.toString()}`);
   if (!response.ok) {
@@ -390,7 +445,8 @@ async function fetchGeoapifyKeywordResults(
   location: { name: string; city: string | null; region: string | null; country: string | null },
   targetCount: number,
 ): Promise<PreviewRow[]> {
-  if (!env.GEOAPIFY_API_KEY) return [];
+  const geoapifyApiKey = getGeoapifyApiKey();
+  if (!geoapifyApiKey) return [];
   const scope = await resolveGeoapifyPlaceScope(location);
   if (!scope?.placeId) {
     throw new Error("Geoapify could not resolve the selected location. Try a more specific city or municipality.");
@@ -406,7 +462,7 @@ async function fetchGeoapifyKeywordResults(
       filter: `place:${scope.placeId}`,
       limit: "20",
       offset: String(pageIndex * 20),
-      apiKey: env.GEOAPIFY_API_KEY,
+      apiKey: geoapifyApiKey,
     });
     if (scope.lat !== null && scope.lon !== null) {
       params.set("bias", `proximity:${scope.lon},${scope.lat}`);
@@ -418,7 +474,7 @@ async function fetchGeoapifyKeywordResults(
     const response = await fetch(`https://api.geoapify.com/v2/places?${params.toString()}`);
     if (!response.ok) {
       const rawError = await response.text();
-      throw new Error(`Geoapify places search failed. ${rawError.slice(0, 160)}`);
+      throw new Error(toGeoapifyErrorMessage(rawError, "places"));
     }
 
     const result = (await response.json()) as GeoapifyPlacesResponse;
@@ -469,18 +525,18 @@ async function fetchKeywordResults(
   location: { name: string; city: string | null; region: string | null; country: string | null },
   targetCount: number,
 ): Promise<SearchProviderResult> {
-  if (env.GOOGLE_PLACES_API_KEY) {
+  if (getGooglePlacesApiKey()) {
     try {
       const rows = await fetchGoogleKeywordResults(keyword, location, targetCount);
       return { rows, provider: "google" };
     } catch (error) {
-      if (!env.GEOAPIFY_API_KEY || !shouldFallbackToGeoapify(error)) {
+      if (!getGeoapifyApiKey() || !shouldFallbackToGeoapify(error)) {
         throw error;
       }
     }
   }
 
-  if (env.GEOAPIFY_API_KEY) {
+  if (getGeoapifyApiKey()) {
     const rows = await fetchGeoapifyKeywordResults(keyword, categoryName, location, targetCount);
     return { rows, provider: "geoapify" };
   }
@@ -771,7 +827,7 @@ export async function POST(request: NextRequest) {
     const user = await getApiSessionUser(request);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!env.GOOGLE_PLACES_API_KEY && !env.GEOAPIFY_API_KEY) {
+    if (!getGooglePlacesApiKey() && !getGeoapifyApiKey()) {
       return NextResponse.json({ error: "No places provider is configured. Add GOOGLE_PLACES_API_KEY or GEOAPIFY_API_KEY." }, { status: 400 });
     }
 
@@ -820,7 +876,7 @@ export async function POST(request: NextRequest) {
     const providerUsed: ProspectingProvider =
       keywordResults.some((item) => item.provider === "geoapify") && !keywordResults.every((item) => item.provider === "google")
         ? "geoapify"
-        : (keywordResults[0]?.provider ?? (env.GEOAPIFY_API_KEY ? "geoapify" : "google"));
+        : (keywordResults[0]?.provider ?? (getGeoapifyApiKey() ? "geoapify" : "google"));
     const previews = keywordResults.flatMap((item) => item.rows);
 
     const ranked = Array.from(new Map(previews.map((row) => [row.place_id ?? `${row.business_name}-${row.address}`, row])).values())
