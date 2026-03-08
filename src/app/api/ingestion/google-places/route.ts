@@ -30,6 +30,18 @@ type GooglePlacesResponse = {
   nextPageToken?: string;
 };
 
+type GoogleApiErrorPayload = {
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+    details?: Array<{
+      reason?: string;
+      metadata?: Record<string, string>;
+    }>;
+  };
+};
+
 type PreviewRow = {
   business_name: string | null;
   address: string | null;
@@ -99,6 +111,56 @@ function buildSearchLocationText(location: { name: string; city: string | null; 
   return Array.from(new Set(tokens)).join(", ");
 }
 
+function parseGoogleApiError(rawError: string): GoogleApiErrorPayload | null {
+  try {
+    return JSON.parse(rawError) as GoogleApiErrorPayload;
+  } catch {
+    return null;
+  }
+}
+
+function extractGoogleProjectId(parsed: GoogleApiErrorPayload | null, rawError: string): string | null {
+  const metadataCandidates = parsed?.error?.details?.flatMap((detail) => Object.values(detail.metadata ?? {})) ?? [];
+  for (const value of metadataCandidates) {
+    const match = value.match(/projects\/(\d+)/i);
+    if (match) return match[1];
+  }
+
+  const textMatch = rawError.match(/project[#:/ ]+(\d{6,})/i) ?? rawError.match(/projects\/(\d{6,})/i);
+  return textMatch?.[1] ?? null;
+}
+
+function toGooglePlacesErrorMessage(rawError: string): string {
+  const parsed = parseGoogleApiError(rawError);
+  const status = (parsed?.error?.status ?? "").toUpperCase();
+  const message = parsed?.error?.message ?? rawError;
+  const reasonText = (parsed?.error?.details?.map((detail) => detail.reason ?? "").join(" ") ?? "").toUpperCase();
+  const projectId = extractGoogleProjectId(parsed, rawError);
+  const projectLabel = projectId ? ` for Google Cloud project ${projectId}` : "";
+
+  if (status.includes("PERMISSION_DENIED") && (reasonText.includes("BILLING_DISABLED") || message.toUpperCase().includes("BILLING"))) {
+    return `Google Places API billing is disabled${projectLabel}. Enable billing in Google Cloud Console, wait a few minutes, then try again.`;
+  }
+
+  if (reasonText.includes("SERVICE_DISABLED") || message.toUpperCase().includes("HAS NOT BEEN USED IN PROJECT")) {
+    return `Google Places API (New) is not enabled${projectLabel}. Enable the API in Google Cloud Console, wait a few minutes, then try again.`;
+  }
+
+  if (status.includes("INVALID_ARGUMENT") && message.toUpperCase().includes("API KEY")) {
+    return "GOOGLE_PLACES_API_KEY is invalid. Generate a valid server-side key for Places API (New) and update the environment variable.";
+  }
+
+  if (status.includes("REQUEST_DENIED") || message.toUpperCase().includes("API KEY") || message.toUpperCase().includes("REFERER")) {
+    return "Google Places API key restrictions are blocking this request. Allow Places API (New) for server-side usage or relax the current key restrictions.";
+  }
+
+  if (status.includes("RESOURCE_EXHAUSTED") || message.toUpperCase().includes("QUOTA")) {
+    return `Google Places API quota has been exceeded${projectLabel}. Increase quota or wait for the quota window to reset, then try again.`;
+  }
+
+  return `Google Places search failed. ${message.split("\n")[0].trim()}`;
+}
+
 async function fetchKeywordResults(
   keyword: string,
   location: { name: string; city: string | null; region: string | null; country: string | null },
@@ -132,7 +194,7 @@ async function fetchKeywordResults(
       if (rawError.includes("INVALID_ARGUMENT") && pageToken) {
         break;
       }
-      throw new Error(`Google Places API failed: ${rawError}`);
+      throw new Error(toGooglePlacesErrorMessage(rawError));
     }
 
     const result = (await response.json()) as GooglePlacesResponse;

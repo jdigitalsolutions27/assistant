@@ -188,6 +188,21 @@ function generatedStatusClass(eligible: boolean): string {
   return eligible ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300";
 }
 
+function messageAlertClass(message: string): string {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("failed") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("disabled") ||
+    normalized.includes("invalid")
+  ) {
+    return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-200";
+}
+
 export function ProspectingClient({
   categories,
   locations,
@@ -918,7 +933,9 @@ export function ProspectingClient({
               </Button>
             </div>
           ) : null}
-          {message ? <p className="text-sm text-slate-700 dark:text-slate-200">{message}</p> : null}
+          {message ? (
+            <div className={`rounded-md border px-3 py-2 text-sm leading-relaxed break-words ${messageAlertClass(message)}`}>{message}</div>
+          ) : null}
         </CardContent>
       </Card>
 
