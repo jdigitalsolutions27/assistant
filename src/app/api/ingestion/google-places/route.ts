@@ -882,10 +882,18 @@ function buildRowLocationHaystack(row: PreviewRow): string {
       | {
           location?: {
             formatted_address?: string;
+            country?: string;
+            region?: string;
+            locality?: string;
           };
         }
       | undefined;
-    parts.push(location?.location?.formatted_address ?? null);
+    parts.push(
+      location?.location?.formatted_address ?? null,
+      location?.location?.country ?? null,
+      location?.location?.region ?? null,
+      location?.location?.locality ?? null,
+    );
   }
 
   return normalizeText(parts.filter(Boolean).join(" "));
