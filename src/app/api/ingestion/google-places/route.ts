@@ -126,6 +126,9 @@ const GEOAPIFY_CATEGORY_MAP: Record<string, string[]> = {
   spa: ["service", "commercial"],
 };
 
+const GEOAPIFY_SCOPE_CACHE_TTL_MS = 10 * 60 * 1000;
+const geoapifyScopeCache = new Map<string, { expiresAt: number; value: { placeId: string; lat: number | null; lon: number | null } | null }>();
+
 function normalizePhone(value?: string | null): string {
   return (value ?? "").replace(/\D/g, "");
 }
@@ -376,6 +379,11 @@ async function resolveGeoapifyPlaceScope(location: {
 
   const locationText = buildSearchLocationText(location);
   if (!locationText) return null;
+  const cacheKey = locationText.toLowerCase();
+  const cached = geoapifyScopeCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
 
   const params = new URLSearchParams({
     text: locationText,
@@ -397,13 +405,18 @@ async function resolveGeoapifyPlaceScope(location: {
 
   const result = (await response.json()) as GeoapifyGeocodeResponse;
   const first = result.results?.[0];
-  if (!first?.place_id) return null;
+  if (!first?.place_id) {
+    geoapifyScopeCache.set(cacheKey, { expiresAt: Date.now() + GEOAPIFY_SCOPE_CACHE_TTL_MS, value: null });
+    return null;
+  }
 
-  return {
+  const value = {
     placeId: first.place_id,
     lat: first.lat ?? null,
     lon: first.lon ?? null,
   };
+  geoapifyScopeCache.set(cacheKey, { expiresAt: Date.now() + GEOAPIFY_SCOPE_CACHE_TTL_MS, value });
+  return value;
 }
 
 async function fetchGeoapifyPlaceDetails(placeId: string): Promise<{
@@ -439,6 +452,48 @@ async function fetchGeoapifyPlaceDetails(placeId: string): Promise<{
   };
 }
 
+function extractGeoapifyPlaceId(row: PreviewRow): string | null {
+  if (!row.place_id?.startsWith("geoapify:")) return null;
+  return row.place_id.slice("geoapify:".length);
+}
+
+async function enrichGeoapifyPreviewRow(row: PreviewRow): Promise<PreviewRow> {
+  const placeId = extractGeoapifyPlaceId(row);
+  if (!placeId) return row;
+
+  const details = await fetchGeoapifyPlaceDetails(placeId);
+  const website = details.website_url ?? row.website_url;
+  const phone = details.phone ?? row.phone;
+  const email = details.email ?? row.email;
+
+  return {
+    ...row,
+    website_url: website,
+    phone,
+    email,
+    contact_checked: true,
+    contact_verification: evaluateContactVerification({
+      email,
+      facebook_url: row.facebook_url,
+      phone,
+      website_url: website,
+    }),
+    raw_json: {
+      ...row.raw_json,
+      detail_contact: details,
+    },
+  };
+}
+
+async function enrichTopGeoapifyRows(rows: PreviewRow[], maxToEnrich: number): Promise<PreviewRow[]> {
+  if (maxToEnrich <= 0 || rows.length === 0) return rows;
+  const limit = Math.min(rows.length, maxToEnrich);
+  const head = rows.slice(0, limit);
+  const tail = rows.slice(limit);
+  const enrichedHead = await mapWithConcurrency(head, enrichGeoapifyPreviewRow, 8);
+  return [...enrichedHead, ...tail];
+}
+
 async function fetchGeoapifyKeywordResults(
   keyword: string,
   categoryName: string,
@@ -467,9 +522,6 @@ async function fetchGeoapifyKeywordResults(
     if (scope.lat !== null && scope.lon !== null) {
       params.set("bias", `proximity:${scope.lon},${scope.lat}`);
     }
-    if (keyword.trim()) {
-      params.set("name", keyword.trim());
-    }
 
     const response = await fetch(`https://api.geoapify.com/v2/places?${params.toString()}`);
     if (!response.ok) {
@@ -484,39 +536,31 @@ async function fetchGeoapifyKeywordResults(
   }
 
   const sliced = collected.slice(0, targetCount);
-  const detailRows = await mapWithConcurrency(
-    sliced,
-    async (feature) => {
-      const properties = feature.properties ?? {};
-      const placeId = properties.place_id ?? null;
-      const details = placeId ? await fetchGeoapifyPlaceDetails(placeId) : { website_url: null, phone: null, email: null };
-
-      return {
-        business_name: properties.name ?? null,
-        address: properties.formatted ?? null,
-        phone: details.phone,
-        website_url: details.website_url,
+  return sliced.map((feature) => {
+    const properties = feature.properties ?? {};
+    const placeId = properties.place_id ?? null;
+    return {
+      business_name: properties.name ?? null,
+      address: properties.formatted ?? null,
+      phone: null,
+      website_url: null,
+      facebook_url: null,
+      email: null,
+      place_id: placeId ? `geoapify:${placeId}` : null,
+      contact_verification: evaluateContactVerification({
+        email: null,
         facebook_url: null,
-        email: details.email,
-        place_id: placeId ? `geoapify:${placeId}` : null,
-        contact_verification: evaluateContactVerification({
-          email: details.email,
-          facebook_url: null,
-          phone: details.phone,
-          website_url: details.website_url,
-        }),
-        contact_checked: true,
-        raw_json: {
-          provider: "geoapify",
-          properties,
-          detail_contact: details,
-        } satisfies Record<string, unknown>,
-      } satisfies PreviewRow;
-    },
-    6,
-  );
-
-  return detailRows;
+        phone: null,
+        website_url: null,
+      }),
+      contact_checked: false,
+      raw_json: {
+        provider: "geoapify",
+        properties,
+        keyword,
+      } satisfies Record<string, unknown>,
+    } satisfies PreviewRow;
+  });
 }
 
 async function fetchKeywordResults(
@@ -912,9 +956,11 @@ export async function POST(request: NextRequest) {
           );
     const locationScoped = relaxedMatched.length > 0 ? relaxedMatched : ranked;
     const offerScoped = locationScoped.filter((row) => matchesOfferMode(row, effectiveOfferMode));
+    const providerScoped =
+      providerUsed === "geoapify" ? await enrichTopGeoapifyRows(offerScoped, Math.min(Math.max(payload.max_results, 20), 30)) : offerScoped;
     const strictFacebook = requireFacebook
-      ? await selectStrictFacebookLeads(offerScoped, payload.max_results)
-      : { selected: offerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0, filteredOutByFacebookConfidence: 0 };
+      ? await selectStrictFacebookLeads(providerScoped, payload.max_results)
+      : { selected: providerScoped.slice(0, payload.max_results), filteredOutByFacebook: 0, filteredOutByFacebookConfidence: 0 };
     const confidenceScoped = filterByFacebookConfidence(strictFacebook.selected, facebookConfidenceMin);
     const scoped = confidenceScoped.selected;
     const previewMatchKeys = scoped.map((item) => buildProspectingMatchKey(item));

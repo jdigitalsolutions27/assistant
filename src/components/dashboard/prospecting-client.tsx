@@ -446,7 +446,7 @@ export function ProspectingClient({
       }
       const providerMessage =
         payload.provider_used === "geoapify"
-          ? "Using Geoapify free fallback provider."
+          ? "Using Geoapify free fallback provider. Top results are enriched first for faster preview."
           : payload.provider_used === "google"
             ? null
             : null;
