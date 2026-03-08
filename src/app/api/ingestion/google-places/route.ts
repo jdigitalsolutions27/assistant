@@ -366,7 +366,7 @@ async function fetchFoursquareKeywordResults(
     query: keyword.trim(),
     near: buildSearchLocationText(location),
     limit: String(Math.min(Math.max(targetCount, 20), 50)),
-    fields: "fsq_id,name,location,website,tel,email",
+    fields: "name,location,website,tel,email",
   });
 
   const response = await fetch(`https://places-api.foursquare.com/places/search?${params.toString()}`, {
