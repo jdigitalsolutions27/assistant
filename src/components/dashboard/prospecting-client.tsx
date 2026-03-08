@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requestJson } from "@/lib/client-http";
 import type { ContactVerification } from "@/lib/contact-verification";
+import { QUICK_START_CATEGORY_NAMES } from "@/lib/constants";
 import { buildProspectingMatchKey } from "@/lib/prospecting-match-key";
 import type { Category, KeywordPack, Location, MessageAngle, MessageLanguage, MessageTone, ProspectingConfig } from "@/lib/types";
 
@@ -279,6 +280,10 @@ export function ProspectingClient({
     if (!categoryName) return null;
     return messageRecommendations.find((item) => item.category === categoryName) ?? null;
   }, [messageRecommendations, selectedCategory]);
+  const quickStartCategories = useMemo(
+    () => QUICK_START_CATEGORY_NAMES.filter((name) => categories.some((category) => category.name === name)),
+    [categories],
+  );
 
   const currentKeywords = useMemo(
     () =>
@@ -967,6 +972,11 @@ export function ProspectingClient({
           <CardDescription>Top category-location opportunities based on historical reply/win rates.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
+          {!agentMode ? (
+            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100">
+              Quick-start focus for first website clients: {quickStartCategories.join(", ")}. Use `Launch` for no-website searches and `Rebuild` for outdated websites.
+            </div>
+          ) : null}
           {recommendations.length === 0 ? <p className="text-sm text-slate-600 dark:text-slate-300">Not enough outreach history yet.</p> : null}
           {recommendations.map((item, idx) => (
             <div key={`${item.location}-${item.category}-${idx}`} className="rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
